@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Sciences — Harrisburg University</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* ── Class Switcher ── */
+        .class-switcher {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            padding: 24px 40px 0;
+            background: #f0f2ff;
+            border-bottom: 2px solid #e0e4f7;
+        }
+
+        .class-tab {
+            padding: 12px 28px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            border: none;
+            border-radius: 50px;
+            background: rgba(255,255,255,0.25);
+            color: white;
+            transition: all 0.25s ease;
+            user-select: none;
+        }
+
+        .class-tab:hover {
+            background: rgba(255,255,255,0.4);
+        }
+
+        .class-tab.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+
+        .class-tab.active.tab-530 {
+            color: #1a7f5a;
+        }
+
+        /* ── Course panels ── */
+        .course-panel {
+            display: none;
+            margin-top: 16px;
+        }
+
+        .course-panel.active {
+            display: block;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        /* ANLY 530 green theme overrides */
+        .panel-530 header {
+            background: linear-gradient(135deg, #1a7f5a 0%, #0d4f38 100%);
+        }
+
+        .panel-530 .week-card h3 {
+            color: #1a7f5a;
+        }
+
+        .panel-530 .week-card:hover {
+            box-shadow: 0 10px 25px rgba(26, 127, 90, 0.3);
+            border-color: #1a7f5a;
+        }
+
+        .panel-530 .week-card a {
+            background: linear-gradient(135deg, #1a7f5a 0%, #0d4f38 100%);
+        }
+
+        .panel-530 .week-card a:hover {
+            box-shadow: 0 5px 15px rgba(26, 127, 90, 0.4);
+        }
+
+        .panel-530 .week-card a.secondary {
+            background: white;
+            color: #1a7f5a;
+            border-color: #1a7f5a;
+        }
+
+        .panel-530 .week-card a.secondary:hover {
+            background: #1a7f5a;
+            color: white;
+        }
+
+        .panel-530 .intro h2 {
+            color: #1a7f5a;
+        }
+
+        .panel-530 .intro {
+            border-left-color: #1a7f5a;
+        }
+
+        .panel-530 h2[style] {
+            color: #1a7f5a !important;
+        }
+
+        .panel-530 footer a {
+            color: #1a7f5a;
+        }
+
+        .panel-530 .badge {
+            background: #1a7f5a;
+        }
+
+        .panel-530 .badge.new {
+            background: #ff6b6b;
+        }
+
+        /* GRAD 695 burgundy/wine theme overrides */
+        .class-tab.active.tab-695 {
+            color: #8b2942;
+        }
+
+        .panel-695 header {
+            background: linear-gradient(135deg, #8b2942 0%, #5a1a28 100%);
+        }
+
+        .panel-695 .week-card h3 {
+            color: #8b2942;
+        }
+
+        .panel-695 .week-card:hover {
+            box-shadow: 0 10px 25px rgba(139, 41, 66, 0.3);
+            border-color: #8b2942;
+        }
+
+        .panel-695 .week-card a {
+            background: linear-gradient(135deg, #8b2942 0%, #5a1a28 100%);
+        }
+
+        .panel-695 .week-card a:hover {
+            box-shadow: 0 5px 15px rgba(139, 41, 66, 0.4);
+        }
+
+        .panel-695 .week-card a.secondary {
+            background: white;
+            color: #8b2942;
+            border-color: #8b2942;
+        }
+
+        .panel-695 .week-card a.secondary:hover {
+            background: #8b2942;
+            color: white;
+        }
+
+        .panel-695 .intro h2 {
+            color: #8b2942;
+        }
+
+        .panel-695 .intro {
+            border-left-color: #8b2942;
+        }
+
+        .panel-695 h2[style] {
+            color: #8b2942 !important;
+        }
+
+        .panel-695 footer a {
+            color: #8b2942;
+        }
+
+        .panel-695 .badge {
+            background: #8b2942;
+        }
+
+        .panel-695 .badge.new {
+            background: #ff6b6b;
+        }
+
+        /* ── ANLY 699 Styles ── */
+        .class-tab.active.tab-699 {
+            color: #9333ea;
+        }
+
+        .panel-699 header {
+            background: linear-gradient(135deg, #9333ea 0%, #6b21a8 100%);
+        }
+
+        .panel-699 .week-card h3 {
+            color: #9333ea;
+        }
+
+        .panel-699 .week-card:hover {
+            box-shadow: 0 10px 25px rgba(147, 51, 234, 0.3);
+            border-color: #9333ea;
+        }
+
+        .panel-699 .week-card a {
+            background: linear-gradient(135deg, #9333ea 0%, #6b21a8 100%);
+        }
+
+        .panel-699 .week-card a:hover {
+            box-shadow: 0 5px 15px rgba(147, 51, 234, 0.4);
+        }
+
+        .panel-699 .week-card a.secondary {
+            background: white;
+            color: #9333ea;
+            border-color: #9333ea;
+        }
+
+        .panel-699 .week-card a.secondary:hover {
+            background: #9333ea;
+            color: white;
+        }
+
+        .panel-699 .intro h2 {
+            color: #9333ea;
+        }
+
+        .panel-699 .intro {
+            border-left-color: #9333ea;
+        }
+
+        .panel-699 h2[style] {
+            color: #9333ea !important;
+        }
+
+        .panel-699 footer a {
+            color: #9333ea;
+        }
+
+        .panel-699 .badge {
+            background: #9333ea;
+        }
+
+        .panel-699 .badge.new {
+            background: #ff6b6b;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .intro {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 40px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .intro h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .weeks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .week-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .week-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+            border-color: #667eea;
+        }
+        
+        .week-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .week-card p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .week-card .links {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .week-card a {
+            display: inline-block;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        .week-card a:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .week-card a.secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .week-card a.secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        footer {
+            background: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            color: #666;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #28a745;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        .badge.new {
+            background: #ff6b6b;
+        }
+        
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .weeks-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- ── Top-level class switcher ── -->
+    <div style="max-width:1200px;margin:0 auto;display:flex;justify-content:center;padding:18px 20px 0;">
+        <div style="background:rgba(255,255,255,0.15);border-radius:50px;padding:6px;display:flex;gap:8px;backdrop-filter:blur(10px);box-shadow:0 4px 15px rgba(0,0,0,0.2);">
+            <button class="class-tab tab-500 active" onclick="switchClass('500')">📊 ANLY 500 — Analytics I</button>
+            <button class="class-tab tab-530" onclick="switchClass('530')">🤖 ANLY 530 — Machine Learning</button>
+            <button class="class-tab tab-695" onclick="switchClass('695')">📝 GRAD 695 — Research Methods</button>
+            <button class="class-tab tab-699" onclick="switchClass('699')">🎓 ANLY 699 — Applied Project</button>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         ANLY 500 — Analytics I
+    ══════════════════════════════════════ -->
+    <div id="panel-500" class="course-panel active">
+    <div class="container">
+        <header>
+            <h1>📊 Data Sciences Repository</h1>
+            <p>ANLY 500 - Analytics I | Harrisburg University</p>
+        </header>
+        
+        <div class="content">
+            <div class="intro">
+                <h2>Welcome to ANLY 500 Analytics I</h2>
+                <p>This course provides comprehensive R programming instruction for data analytics, covering foundational concepts through advanced statistical modeling and visualization. Each week builds upon previous knowledge with hands-on, code-first workflows grounded in statistical theory and reproducible research practices.</p>
+                <p><strong>Primary Textbook:</strong> Field, A., Miles, J., & Field, Z. (2012). <em>Discovering Statistics Using R</em>. SAGE Publications.</p>
+                <p><strong>Author:</strong> Ziyuan Huang | <strong>Course:</strong> Analytics I | <strong>Institution:</strong> Harrisburg University</p>
+                <p style="margin-top: 14px;">
+                    <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:#667eea;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                        <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                        View Repository on GitHub
+                    </a>
+                    <a href="ANLY500-Analytics-I/Syllabus/ANLY-500-Syllabus.pdf"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:white;color:#667eea;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;border:2px solid #667eea;box-shadow:0 2px 6px rgba(0,0,0,0.15);margin-left:12px;">
+                        📄 Course Syllabus (PDF)
+                    </a>
+                </p>
+            </div>
+            
+            <h2 style="margin-bottom: 25px; color: #667eea;">📚 Weekly Tutorials</h2>
+            
+            <div class="weeks-grid">
+                <div class="week-card">
+                    <h3>Week 01: Introduction to R</h3>
+                    <p>Complete beginner's guide to R programming! Learn R basics, data types, structures (vectors, matrices, data frames), functions, data manipulation, visualization, and practical analysis with Palmer Penguins dataset. 40+ visualizations with plain English explanations.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week01/01_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I/Week01" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 02: R for Data Analytics</h3>
+                    <p>Introduction to R programming, data types, descriptive statistics, and basic hypothesis testing. Learn central tendency, dispersion measures, and visualization fundamentals.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week02/02_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I/Week02" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 03: Data Wrangling & EDA</h3>
+                    <p>Master data import, tidy data principles, dplyr verbs, handling missing values, and exploratory data analysis with ggplot2. Includes correlation and basic inference.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week03/03_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I/Week03" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 04: Statistical Inference</h3>
+                    <p>Deep dive into hypothesis testing, confidence intervals, effect sizes (Cohen's d), statistical power, and Type I/II errors. Learn the fundamental equation: Outcome = Model + Error.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week04/04_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I/Week04" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 05: Data Visualization</h3>
+                    <p>Comprehensive ggplot2 tutorial covering histograms, scatterplots, bar graphs, line graphs, data reshaping, and professional themes. Master the grammar of graphics!</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week05/05_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week05/05_graphs.html" target="_blank" class="secondary">📊 Original Lecture</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 06: Data Screening Part 1</h3>
+                    <p>Essential data cleaning techniques: accuracy checking, handling missing data (MCAR, MAR, MNAR), multiple imputation with MICE, and multivariate outlier detection using Mahalanobis distance.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week06/06_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week06/06_datascreen_1.html" target="_blank" class="secondary">📊 Original Lecture</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 07: Data Screening Part 2</h3>
+                    <p>Comprehensive assumption checking with 60+ visualizations! Master independence, multicollinearity, linearity, normality, and homoscedasticity. Includes influential cases, Cook's Distance, and transformation guide.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week07/07_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week07/07_datascreen_2.html" target="_blank" class="secondary">📊 Original Lecture</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 08: Correlation Analysis</h3>
+                    <p>Complete correlation guide: Pearson, Spearman, Kendall, point-biserial, partial & semi-partial correlations. Modern visualizations with corrplot & ggpairs. Includes comparing correlations, effect sizes, and APA reporting.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week08/08_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week08/08_correlation.html" target="_blank" class="secondary">📊 Original Lecture</a>
+                    </div>
+                </div>
+                
+                <div class="week-card">
+                    <h3>Week 09: Linear Regression</h3>
+                    <p>Introduction to Linear Regression. Simple and multiple regression, hierarchical models, dummy coding, and regression diagnostics. Learn to predict outcomes and test specific hypotheses.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week09/09_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week09/09_regression.html" target="_blank" class="secondary">📊 Original Lecture</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 10: Mediation & Moderation</h3>
+                    <p>Advanced regression topics: Mediation (mechanisms) and Moderation (interactions). Learn modern Bootstrapping methods, Simple Slopes analysis, and how to interpret "It Depends" effects.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week10/10_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week10/10_medmod.html" target="_blank" class="secondary">📊 View Slides</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 11: Comparing Two Means</h3>
+                    <p>Comparing two means using the t-test (Independent & Paired). Learn about Signal-to-Noise Ratio, Assumptions (Normality, Homogeneity), and Effect Sizes (Cohen's d).</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week11/11_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week11/11_ttests.html" target="_blank" class="secondary">📊 View Slides</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 12: Comparing Several Means (ANOVA)</h3>
+                    <p>Introduction to One-Way ANOVA. Understand the F-Ratio (Signal-to-Noise), Post Hoc Tests (Bonferroni), and Effect Sizes (Omega Squared). Visualizing SST, SSM, and SSR.</p>
+                    <div class="links">
+                        <a href="ANLY500-Analytics-I/Week12/12_R_for_DataAnalytics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="ANLY500-Analytics-I/Week12/12_lecture_anova.html" target="_blank" class="secondary">📊 View Slides</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="intro" style="border-left-color: #28a745;">
+                <h2>🎯 Key Features</h2>
+                <ul style="margin-left: 20px; margin-top: 15px;">
+                    <li><strong>Code-First Approach:</strong> All examples are executable and reproducible</li>
+                    <li><strong>Theory-Grounded:</strong> IEEE-style citations from Field et al. (2012)</li>
+                    <li><strong>Beginner-Friendly:</strong> Extensive explanations and interpretations</li>
+                    <li><strong>Professional Quality:</strong> Publication-ready figures and tables</li>
+                    <li><strong>Reproducible:</strong> Seedhash integration for consistent results</li>
+                </ul>
+            </div>
+
+            <div class="intro" style="border-left-color: #6c757d; margin-top: 40px;">
+                <h2>📖 References</h2>
+                <ul style="margin-left: 20px; margin-top: 15px; list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 10px;">
+                        Cohen, J., Cohen, P., West, S. G., & Aiken, L. S. (2003). <em>Applied Multiple Regression/Correlation Analysis for the Behavioral Sciences</em> (3rd ed.). Lawrence Erlbaum Associates.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Field, A., Miles, J. and Field, Z. (2012). <em>Discovering Statistics Using R</em>. Sage Publications Ltd., London.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Hays, W. L. (1994). <em>Statistics</em> (5th ed.). Harcourt Brace.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Howell, D. C. (2012). <em>Statistical Methods for Psychology</em> (8th ed.). Cengage Learning.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Little, R. J. A., & Rubin, D. B. (2020). <em>Statistical Analysis with Missing Data</em> (3rd ed.). Wiley.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Tabachnick, B. G., & Fidell, L. S. (2019). <em>Using Multivariate Statistics</em> (7th ed.). Pearson.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Tufte, E. R. (2001). <em>The Visual Display of Quantitative Information</em> (2nd ed.). Graphics Press.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Van Buuren, S. (2018). <em>Flexible Imputation of Missing Data</em> (2nd ed.). CRC Press.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Wickham, H. (2016). <em>ggplot2: Elegant Graphics for Data Analysis</em> (2nd ed.). Springer.
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <footer>
+            <p><strong>Repository:</strong> <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I" target="_blank">github.com/melhzy/data_sciences — ANLY500-Analytics-I</a></p>
+            <p style="margin-top: 10px;">© 2025 Ziyuan Huang | ANLY 500 Analytics I | Harrisburg University</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">Built with ❤️ using R (RMarkdown, ggplot2) and Python (Scikit-Learn, Keras, TensorFlow, PyTorch).</p>
+        </footer>
+    </div>
+    </div><!-- end panel-500 -->
+
+    <!-- ══════════════════════════════════════
+         ANLY 530 — Machine Learning
+    ══════════════════════════════════════ -->
+    <div id="panel-530" class="course-panel panel-530">
+    <div class="container">
+        <header>
+            <h1>🤖 Data Sciences Repository</h1>
+            <p>ANLY 530 - Machine Learning | Harrisburg University</p>
+        </header>
+
+        <div class="content">
+            <div class="intro">
+                <h2>Welcome to ANLY 530 Machine Learning</h2>
+                <p>This course introduces the theory and practice of machine learning using Python with industry-standard libraries. Topics progress from classical supervised and unsupervised learning through deep neural networks, covering the end-to-end ML project workflow, model evaluation, hyperparameter tuning, and modern architectures.</p>
+                <p><strong>Primary Textbook:</strong> Géron, A. (2019). <em>Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow</em> (2nd ed.). O'Reilly Media.</p>
+                <p><strong>Author:</strong> Ziyuan Huang | <strong>Course:</strong> Machine Learning | <strong>Institution:</strong> Harrisburg University</p>
+                <p style="margin-top: 14px;">
+                    <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:#1a7f5a;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                        <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                        View Repository on GitHub
+                    </a>
+                    <a href="ANLY530-Machine-Learning/Syllabus/anly.530.syllabus.pdf"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:white;color:#1a7f5a;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;border:2px solid #1a7f5a;box-shadow:0 2px 6px rgba(0,0,0,0.15);margin-left:12px;">
+                        📄 Course Syllabus (PDF)
+                    </a>
+                </p>
+            </div>
+
+            <h2 style="margin-bottom: 25px; color: #1a7f5a;">📚 Weekly Tutorials</h2>
+
+            <div class="weeks-grid">
+                <div class="week-card">
+                    <h3>Week 01: Introduction to Machine Learning <span class="badge new">NEW</span></h3>
+                    <p>Overview of the ML landscape: supervised vs. unsupervised learning, batch vs. online learning, and instance-based vs. model-based learning. Covers the end-to-end ML project workflow and key challenges.</p>
+                    <div class="links">
+                        <a href="ANLY530-Machine-Learning/Week01/01_Intro_to_Machine_Learning.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning/Week01" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 02: Decision Trees <span class="badge new">NEW</span></h3>
+                    <p>Deep dive into the CART algorithm — Gini impurity, entropy, class probabilities, decision boundaries, regularization (cp, max_depth, minsplit), instability, regression trees, feature importance, and partial dependence plots. Includes IEEE-cited references to Géron (2019) and Boehmke &amp; Greenwell (2020).</p>
+                    <div class="links">
+                        <a href="ANLY530-Machine-Learning/Week02/Week02-DecisionTrees-Tutorial.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning/Week02" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 03: Ensemble Learning &amp; Random Forests <span class="badge new">NEW</span></h3>
+                    <p>From bagging and voting classifiers to Random Forests, Extra-Trees, and Gradient Boosting. Covers OOB evaluation, feature importance, hyperparameter tuning (mtry, nodesize), regression forests, and stacking. Includes IEEE-cited references to Géron (2019) and Boehmke &amp; Greenwell (2020).</p>
+                    <div class="links">
+                        <a href="ANLY530-Machine-Learning/Week03/Week03-RandomForest-Tutorial.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning/Week03" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 04: Regression Models <span class="badge new">NEW</span></h3>
+                    <p>Linear Regression (Normal Equation, Gradient Descent, MSE cost surface, learning rate effect, confidence &amp; prediction bands, residual diagnostics), SVR (linear vs. RBF kernel), Decision Tree Regression (depth vs. overfitting), and Random Forest Regression (OOB convergence, feature importance). 8 visualizations + model comparison.</p>
+                    <div class="links">
+                        <a href="ANLY530-Machine-Learning/Week04/Week04-Regression-Tutorial.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning/Week04" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 05: Support Vector Machines <span class="badge new">NEW</span></h3>
+                    <p>Maximum-margin classification, hyperplanes, support vectors, hard vs. soft margin (C parameter), the kernel trick (linear, polynomial, RBF), gamma tuning, feature scaling, SVR for regression, multi-class SVM, and model comparison with Decision Trees &amp; Random Forests. 20+ visualizations with plain English explanations.</p>
+                    <div class="links">
+                        <a href="ANLY530-Machine-Learning/Week05/Week05-SVM-Tutorial.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning/Week05" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card" style="opacity: 0.6;">
+                    <h3>Weeks 06–15 <span class="badge" style="background: #6c757d;">Coming Soon</span></h3>
+                    <p>Gradient Boosting, XGBoost, dimensionality reduction, neural networks, CNNs, RNNs, model evaluation, hyperparameter tuning, and production deployment strategies.</p>
+                    <div class="links">
+                        <a href="#" style="pointer-events: none; background: #6c757d;">🚧 Under Development</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="intro" style="border-left-color: #28a745; margin-top: 20px;">
+                <h2>🎯 Key Features</h2>
+                <ul style="margin-left: 20px; margin-top: 15px;">
+                    <li><strong>Code-First Approach:</strong> All examples are executable and reproducible in Python</li>
+                    <li><strong>Theory-Grounded:</strong> Concepts tied to Géron (2019) and peer-reviewed sources</li>
+                    <li><strong>Hands-On:</strong> Real datasets with end-to-end pipelines</li>
+                    <li><strong>Modern Toolchain:</strong> Scikit-Learn, Keras, TensorFlow 2.x</li>
+                </ul>
+            </div>
+
+            <div class="intro" style="border-left-color: #6c757d; margin-top: 40px;">
+                <h2>📖 References</h2>
+                <ul style="margin-left: 20px; margin-top: 15px; list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 10px;">
+                        Géron, A. (2019). <em>Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow</em> (2nd ed.). O'Reilly Media.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Goodfellow, I., Bengio, Y., &amp; Courville, A. (2016). <em>Deep Learning</em>. MIT Press.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        James, G., Witten, D., Hastie, T., &amp; Tibshirani, R. (2021). <em>An Introduction to Statistical Learning</em> (2nd ed.). Springer.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Boehmke, B. C., &amp; Greenwell, B. M. (2020). <em>Hands-On Machine Learning with R</em>. CRC Press. <a href="https://bradleyboehmke.github.io/HOML/DT.html" target="_blank">https://bradleyboehmke.github.io/HOML/DT.html</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Repository:</strong> <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning" target="_blank">github.com/melhzy/data_sciences — ANLY530-Machine-Learning</a></p>
+            <p style="margin-top: 10px;">© 2026 Ziyuan Huang | ANLY 530 Machine Learning | Harrisburg University</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">Built with ❤️ using R (RMarkdown, ggplot2) and Python (Scikit-Learn, Keras, TensorFlow, PyTorch).</p>
+        </footer>
+    </div>
+    </div><!-- end panel-530 -->
+
+    <!-- ══════════════════════════════════════
+         GRAD 695 — Research Methodology & Writing
+    ══════════════════════════════════════ -->
+    <div id="panel-695" class="course-panel panel-695">
+    <div class="container">
+        <header>
+            <h1>📝 Data Sciences Repository</h1>
+            <p>GRAD 695 - Research Methodology & Writing | Harrisburg University</p>
+        </header>
+
+        <div class="content">
+            <div class="intro">
+                <h2>Welcome to GRAD 695 Research Methodology & Writing</h2>
+                <p>This course prepares students for analytics research through IEEE Access-format proposal development, research design fundamentals, and ethical research practices. Students learn to frame research questions, design methodological approaches, and communicate findings effectively in academic publication format.</p>
+                <p><strong>Target Format:</strong> IEEE Access 2024 (dual-column) | <strong>Ethics:</strong> CITI Program Training Required</p>
+                <p><strong>Author:</strong> Ziyuan Huang | <strong>Course:</strong> Research Methodology & Writing | <strong>Institution:</strong> Harrisburg University</p>
+                <p style="margin-top: 14px;">
+                    <a href="https://github.com/melhzy/data_sciences/tree/main/GRAD695-Research-Methdology&Writing"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:#8b2942;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                        <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                        View Repository on GitHub
+                    </a>
+                    <a href="GRAD695-Research-Methdology&Writing/Syllabus/GRAD695-Syllabus.pdf"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:white;color:#8b2942;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;border:2px solid #8b2942;box-shadow:0 2px 6px rgba(0,0,0,0.15);margin-left:12px;">
+                        📄 Course Syllabus (PDF)
+                    </a>
+                </p>
+            </div>
+
+            <h2 style="margin-bottom: 25px; color: #8b2942;">📚 Course Content</h2>
+
+            <div class="weeks-grid">
+                <div class="week-card">
+                    <h3>Executive Session 01: Research Foundations <span class="badge new">NEW</span></h3>
+                    <p>Introduction to the research process, problem definition, analytics research methodology overview, and GRAD 695/699 two-course capstone sequence structure. Includes page count expectations and IEEE Access formatting requirements.</p>
+                    <div class="links">
+                        <a href="GRAD695-Research-Methdology&Writing/Week01_ExecutiveSession01/01_executive_session01_research_foundations.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/GRAD695-Research-Methdology&Writing/Week01_ExecutiveSession01" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 02: Frameworks, Benchmarks &amp; Literature Reviews <span class="badge new">NEW</span></h3>
+                    <p>Types of research frameworks (analytic, theoretical, methodological), benchmark datasets vs. metrics, conducting a literature search, and three methods for organizing a literature review (literature maps, subheadings, first sentences). Includes Zotero citation management and final guidance on writing a coherent literature review argument.</p>
+                    <div class="links">
+                        <a href="GRAD695-Research-Methdology&Writing/Week02/02_frameworks_benchmarks.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/GRAD695-Research-Methdology%26Writing/Week02" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 03: Individual Consultation <span class="badge new">NEW</span></h3>
+                    <p>One-on-one instructor meetings to discuss each student's background, strengths, expectations, and initial research direction for GRAD 695 and ANLY 699. No lecture or graded deliverable — the consultation itself is the activity.</p>
+                    <div class="links">
+                        <a href="GRAD695-Research-Methdology&Writing/Week03/03_individual_consultation.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/GRAD695-Research-Methdology%26Writing/Week03" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 04: Doing Good Science — Ethics &amp; the IRB <span class="badge new">NEW</span></h3>
+                    <p>Human subjects research and 45 CFR 46, the three Belmont principles, IRB review levels, IACUC for animal research, CITI training groups, professional ethics (intellectual property, data handling, p-hacking), scientific values, and data science / AI ethics including algorithmic bias and the regulatory landscape.</p>
+                    <div class="links">
+                        <a href="GRAD695-Research-Methdology&Writing/Week04/04_ethics_in_research.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/GRAD695-Research-Methdology%26Writing/Week04" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 05: Research Basics — Introduction to Research Questions <span class="badge new">NEW</span></h3>
+                    <p>Full proposal structure (Introduction, Literature Review, Purpose &amp; RQ, Methods), goal vs. purpose vs. research question crosswalk, hypothesis testing vs. research questions, p-value vs. effect size, data quality &amp; sampling, conceptual vs. operational definitions, feasibility assessment (data access, timeline, skills, ethics, contingency), and Zotero citation management. 15+ interactive ggplot2 and DiagrammeR visualizations.</p>
+                    <div class="links">
+                        <a href="GRAD695-Research-Methdology&Writing/Week05/05_research_basics.html" target="_blank">📄 View Tutorial</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/GRAD695-Research-Methdology%26Writing/Week05" target="_blank" class="secondary">🐙 Source on GitHub</a>
+                    </div>
+                </div>
+
+                <div class="week-card" style="opacity: 0.6;">
+                    <h3>Weeks 06–15 <span class="badge" style="background: #6c757d;">Coming Soon</span></h3>
+                    <p>Data collection methods (surveys, qualitative, data mining), designing solutions (experiments, model components, prompt engineering, validation), communicating research (presentations, writing, non-technical audiences), and final proposal submission.</p>
+                    <div class="links">
+                        <a href="#" style="pointer-events: none; background: #6c757d;">🚧 Under Development</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="intro" style="border-left-color: #28a745; margin-top: 20px;">
+                <h2>🎯 Key Features</h2>
+                <ul style="margin-left: 20px; margin-top: 15px;">
+                    <li><strong>Publication-Ready Format:</strong> IEEE Access 2024 dual-column template with LaTeX/Pandoc</li>
+                    <li><strong>Ethics First:</strong> CITI Program training required for IRB preparation</li>
+                    <li><strong>Two-Course Sequence:</strong> GRAD 695 (proposal ~5 dual-column pages) → GRAD 699 (full thesis ~10 dual-column pages)</li>
+                    <li><strong>Professional Writing:</strong> APA 7th edition citation and style requirements</li>
+                </ul>
+            </div>
+
+            <div class="intro" style="border-left-color: #6c757d; margin-top: 40px;">
+                <h2>📖 Key Resources</h2>
+                <ul style="margin-left: 20px; margin-top: 15px; list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 10px;">
+                        American Psychological Association. (2020). <em>Publication Manual of the American Psychological Association</em> (7th ed.). APA.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        IEEE. (2024). <em>IEEE Access Author Instructions</em>. Available at <a href="https://ieeeaccess.ieee.org/about/" target="_blank" style="color: #8b2942;">ieeeaccess.ieee.org</a>
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        CITI Program. <em>Human Subjects Research Ethics Training</em>. Available at <a href="https://about.citiprogram.org/" target="_blank" style="color: #8b2942;">about.citiprogram.org</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Repository:</strong> <a href="https://github.com/melhzy/data_sciences/tree/main/GRAD695-Research-Methdology&Writing" target="_blank">github.com/melhzy/data_sciences — GRAD695-Research-Methdology&Writing</a></p>
+            <p style="margin-top: 10px;">© 2026 Ziyuan Huang | GRAD 695 Research Methodology & Writing | Harrisburg University</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">Built with ❤️ using R Markdown, LaTeX, and Pandoc for IEEE Access format.</p>
+        </footer>
+    </div>
+    </div><!-- end panel-695 -->
+
+    <!-- ══════════════════════════════════════
+         ANLY 699 — Applied Project
+    ══════════════════════════════════════ -->
+    <div id="panel-699" class="course-panel panel-699">
+    <div class="container">
+        <header>
+            <h1>🎓 Data Sciences Repository</h1>
+            <p>ANLY 699 - Applied Project in Analytics | Harrisburg University</p>
+        </header>
+
+        <div class="content">
+            <div class="intro">
+                <h2>Welcome to ANLY 699 Applied Project in Analytics</h2>
+                <p>This capstone course involves the application of analytics methods and techniques to real-world problems. Students conduct comprehensive research projects demonstrating mastery of analytics principles, tools, and APA 7th edition scientific writing standards. The course emphasizes end-to-end project execution from problem definition through final presentation.</p>
+                <p><strong>Writing Standard:</strong> APA 7th Edition | <strong>Format:</strong> Research Paper & Presentation</p>
+                <p><strong>Author:</strong> Ziyuan Huang | <strong>Course:</strong> Applied Project in Analytics | <strong>Institution:</strong> Harrisburg University</p>
+                <p style="margin-top: 14px;">
+                    <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:#9333ea;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                        <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                        View Repository on GitHub
+                    </a>
+                    <a href="ANLY699-Applied-Project/Syllabus/ANLY699-Syllabus.pdf"
+                       target="_blank"
+                       style="display:inline-flex;align-items:center;gap:8px;background:white;color:#9333ea;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95em;border:2px solid #9333ea;box-shadow:0 2px 6px rgba(0,0,0,0.15);margin-left:12px;">
+                        📄 Course Syllabus (PDF)
+                    </a>
+                </p>
+            </div>
+
+            <h2 style="margin-bottom: 25px; color: #9333ea;">📚 Research Writing Guide</h2>
+
+            <div class="weeks-grid">
+                <div class="week-card">
+                    <h3>Week 01: Research Foundation</h3>
+                    <p>Understanding the scientific research process, components of research papers, and APA 7 overview with basic formatting standards for analytics research.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week01-Foundation/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week01-Foundation" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 02: Literature Review</h3>
+                    <p>Searching academic databases, evaluating source credibility, synthesizing research findings, and building theoretical frameworks for analytics projects.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week02-Literature-Review/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week02-Literature-Review" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 03: Research Questions</h3>
+                    <p>Formulating research questions, developing testable hypotheses, and defining variables and constructs in analytics research contexts.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week03-Research-Questions/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week03-Research-Questions" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 04: Methodology</h3>
+                    <p>Research design fundamentals, quantitative methodology, sampling strategies, validity and reliability, ethics and IRB considerations.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week04-Methodology/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week04-Methodology" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 05: Data Collection</h3>
+                    <p>Data sources and acquisition, survey design and measurement, data quality assessment, and documentation requirements.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week05-Data-Collection/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week05-Data-Collection" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 06: Data Analysis</h3>
+                    <p>Selecting appropriate statistical tests, checking assumptions and diagnostics, effect sizes and power analysis.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week06-Data-Analysis/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week06-Data-Analysis" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 07: Results</h3>
+                    <p>Reporting statistical findings, organizing results logically, integrating tables and figures, what to include vs. exclude.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week07-Results/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week07-Results" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 08: Discussion</h3>
+                    <p>Interpreting findings, linking results to literature, addressing limitations, implications and future research directions.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week08-Discussion/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week08-Discussion" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 09: Abstract & Introduction</h3>
+                    <p>Writing effective abstracts, introduction structure (funnel approach), establishing research significance, stating purpose and hypotheses.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week09-Abstract-Introduction/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week09-Abstract-Introduction" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 10: Citations & References</h3>
+                    <p>In-text citation formats, reference list formatting, managing citations in R Markdown, avoiding plagiarism.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week10-Citations-References/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week10-Citations-References" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 11: Figures & Tables</h3>
+                    <p>APA-compliant figure formatting, table design and numbering, captions and notes, R code for publication-ready graphics.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week11-Figures-Tables/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week11-Figures-Tables" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 12: Revision & Editing</h3>
+                    <p>Self-editing strategies, peer review process, common writing pitfalls, strengthening arguments and clarity.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week12-Revision-Editing/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week12-Revision-Editing" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 13: Final Draft</h3>
+                    <p>Integrating all components, final formatting checks, preparing submission materials, quality assurance checklist.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week13-Final-Draft/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week13-Final-Draft" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+
+                <div class="week-card">
+                    <h3>Week 14: Presentation</h3>
+                    <p>Creating effective research presentations, designing clear slides, delivering findings professionally, Q&A preparation.</p>
+                    <div class="links">
+                        <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/Week14-Presentation/README.md" target="_blank">📖 View Week Guide</a>
+                        <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project/Week14-Presentation" target="_blank" class="secondary">📁 Week Folder</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="intro" style="border-left-color: #28a745; margin-top: 20px;">
+                <h2>🎯 Key Features</h2>
+                <ul style="margin-left: 20px; margin-top: 15px;">
+                    <li><strong>APA 7th Edition:</strong> Complete guide to scientific writing standards for analytics research</li>
+                    <li><strong>14-Week Tutorial:</strong> Structured progression from foundation through final presentation</li>
+                    <li><strong>Applied Focus:</strong> Real-world analytics projects demonstrating end-to-end execution</li>
+                    <li><strong>Research Integration:</strong> Connecting data analysis with scientific methodology and reporting</li>
+                </ul>
+            </div>
+
+            <div class="intro" style="border-left-color: #6c757d; margin-top: 40px;">
+                <h2>📖 Key Resources</h2>
+                <ul style="margin-left: 20px; margin-top: 15px; list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 10px;">
+                        American Psychological Association. (2020). <em>Publication Manual of the American Psychological Association</em> (7th ed.). APA.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        Field, A., Miles, J., & Field, Z. (2012). <em>Discovering Statistics Using R</em>. SAGE Publications.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        <strong>14-Week Research Writing Guide:</strong> <a href="https://github.com/melhzy/data_sciences/blob/main/ANLY699-Applied-Project/RESEARCH_WRITING_GUIDE.md" target="_blank" style="color: #9333ea;">RESEARCH_WRITING_GUIDE.md</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Repository:</strong> <a href="https://github.com/melhzy/data_sciences/tree/main/ANLY699-Applied-Project" target="_blank">github.com/melhzy/data_sciences — ANLY699-Applied-Project</a></p>
+            <p style="margin-top: 10px;">© 2026 Ziyuan Huang | ANLY 699 Applied Project in Analytics | Harrisburg University</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">Built with ❤️ using R Markdown and reproducible research practices.</p>
+        </footer>
+    </div>
+    </div><!-- end panel-699 -->
+
+    <script>
+        function switchClass(cls) {
+            // toggle panels
+            document.getElementById('panel-500').classList.toggle('active', cls === '500');
+            document.getElementById('panel-530').classList.toggle('active', cls === '530');
+            document.getElementById('panel-699').classList.toggle('active', cls === '699');
+            document.getElementById('panel-695').classList.toggle('active', cls === '695');
+            // toggle tab buttons
+            document.querySelectorAll('.class-tab').forEach(function(btn) {
+                btn.classList.remove('active');
+            });
+            document.querySelector('.tab-' + cls).classList.add('active');
+            // update URL hash so the tab is bookmarkable / shareable
+            history.replaceState(null, '', '#' + cls);
+            // scroll to top of page
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function activateFromHash() {
+            var hash = window.location.hash.replace('#', '');
+            if (hash === '500' || hash === '530' || hash === '699' || hash === '695') {
+                switchClass(hash);
+            }
+        }
+
+        // Re-activate when browser back/forward changes the hash
+        window.addEventListener('hashchange', activateFromHash);
+        // Activate on initial page load (DOM is ready since script is end of body)
+        document.addEventListener('DOMContentLoaded', activateFromHash);
+        // Fallback: also run immediately in case DOMContentLoaded already fired
+        activateFromHash();
+    </script>
+</body>
+</html>
+
