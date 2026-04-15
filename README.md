@@ -2,7 +2,7 @@
 
 This repository contains teaching materials, tutorials, and applied projects for various analytics and data science courses offered at Harrisburg University.
 
-**📊 Live Course Portal:** [https://roozbeh412.github.io/data_sciences/]([https://roozbeh412.github.io/data_sciences/)])
+**📊 Live Course Portal:** [https://roozbeh412.github.io/data_sciences/](https://roozbeh412.github.io/data_sciences/)
 
 ## Courses
 
