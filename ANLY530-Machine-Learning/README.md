@@ -2,9 +2,9 @@
 
 **Course**: ANLY 530 — Principles & Applications of Machine Learning
 **Institution**: Harrisburg University
-**Author**: Ziyuan Huang, PhD
+**Author**: Roozbeh Sadeghian, PhD
 **Term**: Late Spring 2026 (March 14 – June 18, 2026)
-**Website**: [https://melhzy.github.io/data_sciences/](https://melhzy.github.io/data_sciences/#530)
+**Website**: [https://roozbeh412.github.io/data_sciences/](https://roozbeh412.github.io/data_sciences/#530)
 
 ---
 
@@ -26,7 +26,7 @@ Quick links to every week. Click **📄 Tutorial** to open the live HTML, or **�
 
 | Week | Topic                                           | Tutorial                                                                                                             | Source            |
 | ---- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| 01   | Introduction to Machine Learning                | [📄 Tutorial](https://melhzy.github.io/data_sciences/ANLY530-Machine-Learning/Week01/01_Intro_to_Machine_Learning.html) | [📂 Folder](Week01/) |
+| 01   | Introduction to Machine Learning                | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week01/01_Intro_to_Machine_Learning.html) | [📂 Folder](Week01/) |
 | 02   | Python & R for Machine Learning                 | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week02/) |
 | 03   | Decision Trees                                  | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week03/) |
 | 04   | Random Forests & Ensemble Methods               | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week04/) |
