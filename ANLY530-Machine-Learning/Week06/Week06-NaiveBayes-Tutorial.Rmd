@@ -1,6 +1,6 @@
 ---
-title: "Week 06: Naive Bayes (NB) Classifiers — A Beginner-Friendly Guide"
-author: "Ziyuan Huang"
+title: "Week 06: Naive Bayes Classifiers"
+author: "Roozbeh Sadeghian"
 date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
 output:
   html_document:
@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  fig.align = "center",
+  fig.align = 'center',
   fig.width = 8,
   fig.height = 6
 )
@@ -29,7 +29,7 @@ if (!requireNamespace("seedhash", quietly = TRUE)) {
   if (!requireNamespace("pak", quietly = TRUE)) {
     install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
   }
-  pak::pkg_install("github::melhzy/seedhash/R", ask = FALSE)
+  pak::pkg_install("github::roozbeh412/seedhash/R", ask = FALSE)
 }
 ```
 
@@ -46,541 +46,1270 @@ cat(sprintf("**Random Seed Source:** `seedhash` package — input string: `\"ANL
 
 # Introduction
 
-This week we study **Naive Bayes (NB)** classifiers — one of the simplest, fastest, and most surprisingly effective classification methods.
+Over the past five weeks we have built classifiers that work very differently:
 
-If you are new to Machine Learning, NB is a great “first probability model” because:
+- **Decision Trees** ask a series of yes/no questions about features.
+- **Random Forests** average hundreds of trees to reduce variance.
+- **SVMs** find the widest possible gap between classes.
 
-- It forces you to think in **probabilities** (“How likely is spam?”) instead of just hard rules.
-- The training step is mostly counting + simple averages (very fast).
-- It is a classic baseline for **text classification** (spam filtering, sentiment).
+This week we take yet another approach — one rooted in **probability**. Instead of drawing boundaries or asking questions, a **Naive Bayes classifier** asks: *"Given what I see, what is the most probable class?"*
 
-We will follow Lecture 07 (`Lecture07-NB.pdf`) and two recommended references:
+The idea is surprisingly simple. You start with a rough guess about how common each class is (the **prior**). Then, for every piece of evidence you observe, you update that guess using **Bayes' Theorem**. The word "naive" comes from a bold simplifying assumption: **every feature is independent of every other feature**, given the class. This assumption is almost never true in reality — yet the classifier works remarkably well anyway.
 
-- Wikipedia: Naive Bayes classifier — `https://en.wikipedia.org/wiki/Naive_Bayes_classifier`
-- scikit-learn user guide (conceptual overview): `https://scikit-learn.org/stable/modules/naive_bayes.html`
+> *"Naive Bayes methods are a set of supervised learning algorithms based on applying Bayes' theorem with the 'naive' assumption of conditional independence between every pair of features given the value of the class variable."*
+> — scikit-learn documentation **[1]**
 
-> **Important note:** We will implement NB in **R**, but the ideas match the Python examples in the slides and in scikit-learn.
+> *"Despite their naive design and apparently oversimplified assumptions, naive Bayes classifiers have worked quite well in many complex real-world situations."*
+> — Wikipedia, "Naive Bayes classifier" **[2]**
 
-## Learning Objectives
+**Learning Objectives:**
 
-By the end of this tutorial, you will be able to:
-
-1. Explain **prior**, **likelihood**, **posterior**, and **evidence** in plain English.
-2. Compute a Bayes posterior probability by hand for a simple example.
-3. Explain what the “**naive**” (independence) assumption is, and why it can still work.
-4. Train and evaluate a **Gaussian Naive Bayes** model on the **Iris** dataset.
-5. Train and evaluate a **Multinomial Naive Bayes** model on a tiny text dataset.
-6. Understand **Laplace smoothing** and the “zero-frequency” problem.
+1. Understand **Bayes' Theorem** and its four components: prior, likelihood, evidence, and posterior.
+2. Explain the **naive independence assumption** and why the classifier still works despite it.
+3. Distinguish between **Gaussian**, **Multinomial**, and **Bernoulli** Naive Bayes and know when to use each.
+4. Build, evaluate, and visualise a Naive Bayes classifier in R using the `e1071` package.
+5. Understand the **zero-frequency problem** and how **Laplace smoothing** fixes it.
+6. Compare Naive Bayes to Decision Trees, Random Forests, and SVMs on the same dataset.
+7. Apply Naive Bayes to a **text classification** (spam filtering) task.
 
 ## Required Packages
 
 ```{r load-packages}
 if (!require("pacman")) install.packages("pacman")
-
 pacman::p_load(
   tidyverse,
-  scales,
-  gridExtra,
-  broom,
-  naivebayes,
+  e1071,
   caret,
-  pROC,
-  tidytext
+  gridExtra,
+  scales,
+  rpart,
+  randomForest,
+  knitr,
+  kableExtra
 )
 ```
 
 ---
 
-# Part 1: Bayes’ Theorem (The “Probability Update” Rule)
+# Part 1: Bayes' Theorem — Updating Your Beliefs
 
-## 1.1 The Bayes Story in One Sentence
+## 1.1 An Everyday Example: Is This Email Spam?
 
-**Bayes’ Theorem** is a way to update your belief after seeing new evidence:
+Imagine your email inbox. About 20% of all incoming messages are spam. You receive a new message containing the word **"Urgent"**. Should you be worried?
 
-- Start with a **prior** belief: “How common is spam in general?”
-- See evidence: “This email contains the word *Urgent*.”
-- Update to a **posterior** belief: “Given *Urgent*, how likely is spam now?”
+Here is what you know:
 
-## 1.2 The Formula (and the Meaning of Each Piece)
+- **Prior belief:** 20% of all email is spam → $P(\text{spam}) = 0.20$
+- **Likelihood:** 60% of spam emails contain the word "Urgent" → $P(\text{Urgent} \mid \text{spam}) = 0.60$
+- **Overall:** Only 15% of *all* emails contain "Urgent" → $P(\text{Urgent}) = 0.15$
 
-Bayes’ Theorem:
+Bayes' Theorem lets you **update** your prior belief using the new evidence:
 
-$$P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}$$
+$$P(\text{spam} \mid \text{Urgent}) = \frac{P(\text{Urgent} \mid \text{spam}) \times P(\text{spam})}{P(\text{Urgent})} = \frac{0.60 \times 0.20}{0.15} = 0.80$$
 
-Where:
+After seeing the word "Urgent", your belief that this email is spam jumps from 20% to **80%**. That is the power of Bayes' Theorem — it turns prior knowledge plus new evidence into an updated, more informed belief.
 
-- \(P(A)\) is the **prior** probability of event \(A\)
-- \(P(B \mid A)\) is the **likelihood** of evidence \(B\) if \(A\) is true
-- \(P(B)\) is the **evidence** (also called marginal likelihood)
-- \(P(A \mid B)\) is the **posterior** probability after seeing \(B\)
+```{r spam-example-viz, fig.height=4.5, fig.width=9}
+spam_df <- data.frame(
+  Stage   = factor(c("Prior Belief\n(before seeing any words)",
+                      "After Seeing 'Urgent'\n(posterior)"),
+                   levels = c("Prior Belief\n(before seeing any words)",
+                              "After Seeing 'Urgent'\n(posterior)")),
+  Spam    = c(0.20, 0.80),
+  Ham     = c(0.80, 0.20)
+) %>%
+  pivot_longer(cols = c(Spam, Ham), names_to = "Class", values_to = "Probability")
 
-## 1.3 Example (from Lecture 07): “Urgent” Spam Email
-
-From the slide story:
-
-- \(P(\text{spam}) = 0.20\)  (20% of all emails are spam)
-- \(P(\text{ham}) = 0.80\)
-- \(P(\text{Urgent}) = 0.05\)  (5% of all emails contain “Urgent”)
-- Suppose \(P(\text{Urgent} \mid \text{spam}) = 0.30\) (spam often uses urgent language)
-
-Then:
-
-$$P(\text{spam} \mid \text{Urgent}) = \frac{P(\text{Urgent} \mid \text{spam})\,P(\text{spam})}{P(\text{Urgent})}$$
-
-```{r urgent-example}
-P_spam <- 0.20
-P_urgent <- 0.05
-P_urgent_given_spam <- 0.30
-
-P_spam_given_urgent <- (P_urgent_given_spam * P_spam) / P_urgent
-P_spam_given_urgent
-```
-
-### Visualizing “Prior → Posterior”
-
-```{r urgent-prior-posterior-plot, fig.height=4.5, fig.width=9}
-df_pp <- tibble(
-  belief = c("Prior: P(spam)", "Posterior: P(spam | Urgent)"),
-  prob = c(P_spam, P_spam_given_urgent)
-)
-
-ggplot(df_pp, aes(x = belief, y = prob, fill = belief)) +
-  geom_col(width = 0.6) +
-  geom_text(aes(label = percent(prob, accuracy = 0.1)),
-            vjust = -0.5, fontface = "bold") +
-  scale_y_continuous(labels = percent, limits = c(0, max(df_pp$prob) + 0.1)) +
-  scale_fill_manual(values = c("#BBDEFB", "#FFCDD2"), guide = "none") +
+ggplot(spam_df, aes(x = Class, y = Probability, fill = Class)) +
+  geom_col(width = 0.55) +
+  geom_text(aes(label = scales::percent(Probability, accuracy = 1)),
+            vjust = -0.4, fontface = "bold", size = 4.5) +
+  facet_wrap(~ Stage) +
+  scale_fill_manual(values = c(Ham = "#4CAF50", Spam = "#E53935")) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.05)) +
   labs(
-    title = "Bayes Update: How Evidence Changes Our Belief",
-    subtitle = "A single word can dramatically increase the probability of spam",
+    title = "Bayes' Theorem in Action: Is This Email Spam?",
+    subtitle = "Seeing the word 'Urgent' shifts our belief from 20% spam to 80% spam",
     x = NULL, y = "Probability"
   ) +
-  theme_minimal()
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold", size = 11))
 ```
 
-> **Beginner intuition:** The prior is your “base rate.” The posterior is your “base rate after seeing evidence.”
+## 1.2 The Four Components of Bayes' Theorem
+
+$$P(C \mid X) = \frac{P(X \mid C) \times P(C)}{P(X)}$$
+
+Every term has a name and a plain-English meaning:
+
+```{r bayes-terms-table, echo=FALSE}
+bayes_terms <- data.frame(
+  Symbol = c("$P(C)$", "$P(X \\mid C)$", "$P(X)$", "$P(C \\mid X)$"),
+  Name = c("Prior", "Likelihood", "Evidence (Marginal)", "Posterior"),
+  `Plain English` = c(
+    "How common is this class *before* we look at any features? (Our initial guess.)",
+    "If the class really is C, how likely are we to see these particular feature values?",
+    "How likely are these feature values across *all* classes? (A normalising constant.)",
+    "After seeing the features, how probable is class C? (Our updated, informed belief.)"
+  )
+)
+knitr::kable(bayes_terms, col.names = c("Symbol", "Name", "Plain English"),
+             caption = "The Four Components of Bayes' Theorem",
+             escape = FALSE) %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+> **Key insight:** The **evidence** $P(X)$ is the same for every class. When comparing classes, it cancels out. So in practice we only need:
+> $$P(C \mid X) \propto P(X \mid C) \times P(C)$$
+> Pick the class with the **largest numerator** — that is the prediction.
+
+## 1.3 A Visual Walk-Through: From Prior to Posterior
+
+Let's visualise the full Bayesian update for three competing classes. Imagine a doctor diagnosing a patient with symptoms $X$. There are three possible diseases, each with a different prior probability and a different likelihood of producing these symptoms.
+
+```{r prior-to-posterior-viz, fig.height=5, fig.width=11}
+diseases <- data.frame(
+  Disease    = c("Cold", "Flu", "Allergy"),
+  Prior      = c(0.50, 0.30, 0.20),
+  Likelihood = c(0.20, 0.70, 0.40)
+)
+diseases$Numerator <- diseases$Prior * diseases$Likelihood
+diseases$Posterior <- diseases$Numerator / sum(diseases$Numerator)
+
+diseases_long <- diseases %>%
+  select(Disease, Prior, Likelihood, Posterior) %>%
+  pivot_longer(-Disease, names_to = "Component", values_to = "Value") %>%
+  mutate(Component = factor(Component, levels = c("Prior", "Likelihood", "Posterior")))
+
+ggplot(diseases_long, aes(x = Disease, y = Value, fill = Disease)) +
+  geom_col(width = 0.55) +
+  geom_text(aes(label = sprintf("%.0f%%", Value * 100)),
+            vjust = -0.4, fontface = "bold", size = 4) +
+  facet_wrap(~ Component, scales = "free_y") +
+  scale_fill_manual(values = c(Cold = "#42A5F5", Flu = "#EF5350", Allergy = "#FFA726")) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 0.85)) +
+  labs(
+    title = "Bayesian Update: From Prior to Posterior",
+    subtitle = "Cold is most common (prior=50%), but Flu best explains the symptoms (likelihood=70%) → Flu wins the posterior",
+    x = NULL, y = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold", size = 12))
+```
+
+> Even though Cold is the most common disease (highest prior), the Flu's much higher likelihood of producing these symptoms makes it the most probable diagnosis after we consider the evidence.
 
 ---
 
-# Part 2: From Bayes to Naive Bayes
+# Part 2: The "Play Tennis" Example — Naive Bayes by Hand
 
-## 2.1 Classification Goal
+## 2.1 The Dataset
 
-In classification, we want to assign a class \(c\) (e.g., spam/ham) to a feature vector \(\mathbf{x}\) (e.g., words, counts, measurements).
+This is a classic dataset from the lecture. We have 14 days of weather observations and whether someone chose to play tennis.
 
-Bayes says:
+```{r play-tennis-data}
+tennis <- data.frame(
+  Day       = 1:14,
+  Outlook   = c("Sunny","Sunny","Overcast","Rain","Rain","Rain","Overcast",
+                 "Sunny","Sunny","Rain","Sunny","Overcast","Overcast","Rain"),
+  Temp      = c("Hot","Hot","Hot","Mild","Cool","Cool","Cool",
+                 "Mild","Cool","Mild","Mild","Mild","Hot","Mild"),
+  Humidity  = c("High","High","High","High","Normal","Normal","Normal",
+                 "High","Normal","Normal","Normal","High","Normal","High"),
+  Windy     = c("No","Yes","No","No","No","Yes","Yes",
+                 "No","No","No","Yes","Yes","No","Yes"),
+  Play      = c("No","No","Yes","Yes","Yes","No","Yes",
+                 "No","Yes","Yes","Yes","Yes","Yes","No")
+)
+knitr::kable(tennis, caption = "The Play Tennis Dataset (14 observations)")
+```
 
-$$P(c \mid \mathbf{x}) = \frac{P(\mathbf{x} \mid c)\,P(c)}{P(\mathbf{x})}$$
+## 2.2 Computing Frequency Tables
 
-To classify, we choose the class with the biggest posterior:
+To apply Naive Bayes, we first count how often each feature value appears for each class.
 
-$$\hat{c}=\arg\max_c P(c\mid \mathbf{x})$$
+```{r frequency-tables, fig.height=6, fig.width=11}
+features <- c("Outlook", "Temp", "Humidity", "Windy")
 
-## 2.2 The “Naive” Assumption (Conditional Independence)
+freq_plots <- lapply(features, function(feat) {
+  freq_df <- tennis %>%
+    count(!!sym(feat), Play) %>%
+    group_by(Play) %>%
+    mutate(Proportion = n / sum(n))
 
-If \(\mathbf{x} = (x_1, x_2, \ldots, x_p)\), Naive Bayes assumes:
+  ggplot(freq_df, aes(x = !!sym(feat), y = Proportion, fill = Play)) +
+    geom_col(position = "dodge", width = 0.6) +
+    geom_text(aes(label = sprintf("%d\n(%.0f%%)", n, Proportion * 100)),
+              position = position_dodge(width = 0.6), vjust = -0.3, size = 3) +
+    scale_fill_manual(values = c(Yes = "#4CAF50", No = "#E53935")) +
+    scale_y_continuous(limits = c(0, 0.7), labels = scales::percent) +
+    labs(title = feat, x = NULL, y = "P(feature | Play)") +
+    theme_minimal(base_size = 10) +
+    theme(legend.position = "bottom")
+})
 
-$$P(\mathbf{x}\mid c) = \prod_{j=1}^p P(x_j \mid c)$$
+do.call(grid.arrange, c(freq_plots, ncol = 2,
+  top = "Frequency Tables: P(Feature Value | Play = Yes/No)"))
+```
 
-In plain English:
+> **How to read:** Each bar shows the proportion of times a feature value appears *within* each class. For example, when Play = Yes, "Overcast" accounts for 4 out of 9 days (44%).
 
-> “Once I know the class, the features behave independently.”
+## 2.3 Manual Prediction: Should We Play Today?
 
-Is that always true in real life? No.
+Suppose today's weather is: **Outlook = Sunny, Temp = Cool, Humidity = High, Windy = Yes**.
 
-So why does NB still work often?
+We compute the **numerator** for each class:
 
-- It can still rank classes correctly even if the probabilities are not perfect.
-- Many problems (especially **text**) are “close enough” to independence for prediction.
-- It’s a strong baseline that is hard to beat with small data.
+$$P(\text{Yes} \mid X) \propto P(X \mid \text{Yes}) \times P(\text{Yes})$$
+$$P(\text{No} \mid X) \propto P(X \mid \text{No}) \times P(\text{No})$$
 
-## 2.3 Why We Use Logs (Underflow Problem)
+Using the naive independence assumption, $P(X \mid C)$ becomes a product:
 
-Multiplying many small probabilities can become **numerically zero** in a computer.
-So we compute:
+$$P(X \mid C) = P(\text{Sunny} \mid C) \times P(\text{Cool} \mid C) \times P(\text{High} \mid C) \times P(\text{Yes(Windy)} \mid C)$$
 
-$$\log P(c\mid \mathbf{x}) \propto \log P(c) + \sum_{j=1}^p \log P(x_j \mid c)$$
+```{r manual-nb-calc}
+yes_count <- sum(tennis$Play == "Yes")  # 9
+no_count  <- sum(tennis$Play == "No")   # 5
+total     <- nrow(tennis)               # 14
 
-Same winner class, safer math.
+prior_yes <- yes_count / total
+prior_no  <- no_count / total
+
+tennis_yes <- tennis[tennis$Play == "Yes", ]
+tennis_no  <- tennis[tennis$Play == "No", ]
+
+# P(feature | Play = Yes)
+p_sunny_yes <- sum(tennis_yes$Outlook == "Sunny") / yes_count
+p_cool_yes  <- sum(tennis_yes$Temp == "Cool") / yes_count
+p_high_yes  <- sum(tennis_yes$Humidity == "High") / yes_count
+p_windy_yes <- sum(tennis_yes$Windy == "Yes") / yes_count
+
+# P(feature | Play = No)
+p_sunny_no <- sum(tennis_no$Outlook == "Sunny") / no_count
+p_cool_no  <- sum(tennis_no$Temp == "Cool") / no_count
+p_high_no  <- sum(tennis_no$Humidity == "High") / no_count
+p_windy_no <- sum(tennis_no$Windy == "Yes") / no_count
+
+numerator_yes <- p_sunny_yes * p_cool_yes * p_high_yes * p_windy_yes * prior_yes
+numerator_no  <- p_sunny_no * p_cool_no * p_high_no * p_windy_no * prior_no
+
+posterior_yes <- numerator_yes / (numerator_yes + numerator_no)
+posterior_no  <- numerator_no / (numerator_yes + numerator_no)
+
+cat("--- Likelihoods ---\n")
+cat(sprintf("P(X | Yes) = %.4f × %.4f × %.4f × %.4f = %.6f\n",
+            p_sunny_yes, p_cool_yes, p_high_yes, p_windy_yes,
+            p_sunny_yes * p_cool_yes * p_high_yes * p_windy_yes))
+cat(sprintf("P(X | No)  = %.4f × %.4f × %.4f × %.4f = %.6f\n\n",
+            p_sunny_no, p_cool_no, p_high_no, p_windy_no,
+            p_sunny_no * p_cool_no * p_high_no * p_windy_no))
+
+cat("--- Numerators (Likelihood × Prior) ---\n")
+cat(sprintf("Score(Yes) = %.6f × %.4f = %.6f\n", 
+            p_sunny_yes * p_cool_yes * p_high_yes * p_windy_yes, prior_yes, numerator_yes))
+cat(sprintf("Score(No)  = %.6f × %.4f = %.6f\n\n",
+            p_sunny_no * p_cool_no * p_high_no * p_windy_no, prior_no, numerator_no))
+
+cat("--- Posterior Probabilities ---\n")
+cat(sprintf("P(Yes | X) = %.4f (%.1f%%)\n", posterior_yes, posterior_yes * 100))
+cat(sprintf("P(No  | X) = %.4f (%.1f%%)\n\n", posterior_no, posterior_no * 100))
+cat(sprintf("Prediction: %s\n", ifelse(posterior_yes > posterior_no, "Play Tennis!", "Don't Play")))
+```
+
+```{r manual-nb-viz, fig.height=4, fig.width=7}
+manual_df <- data.frame(
+  Class = c("Play = Yes", "Play = No"),
+  Posterior = c(posterior_yes, posterior_no)
+)
+
+ggplot(manual_df, aes(x = Class, y = Posterior, fill = Class)) +
+  geom_col(width = 0.5) +
+  geom_text(aes(label = sprintf("%.1f%%", Posterior * 100)),
+            vjust = -0.4, fontface = "bold", size = 5) +
+  scale_fill_manual(values = c("Play = Yes" = "#4CAF50", "Play = No" = "#E53935")) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.1)) +
+  labs(
+    title = "Manual Naive Bayes Prediction",
+    subtitle = "Today: Sunny, Cool, High Humidity, Windy",
+    x = NULL, y = "Posterior Probability"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
 
 ---
 
-# Part 3: Gaussian Naive Bayes (Numeric Features) — Iris Example
+# Part 3: The Naive Assumption — Why "Naive"?
 
-Gaussian NB is used when features are continuous (like lengths/widths). It assumes:
+## 3.1 Conditional Independence: The Bold Simplification
 
-$$x_j \mid c \sim \mathcal{N}(\mu_{c,j},\sigma_{c,j}^2)$$
+The full Bayes formula requires computing $P(X \mid C)$ — the probability of seeing *all* features together, given a class. For $n$ features, this joint probability has an astronomical number of combinations to estimate.
 
-## 3.1 Data: Iris
+The **naive** assumption says: *given the class, every feature is independent of every other feature*. Mathematically:
 
-```{r iris-data}
+$$P(x_1, x_2, \ldots, x_n \mid C) = \prod_{i=1}^{n} P(x_i \mid C)$$
+
+This turns one impossibly complex probability into a simple **product of $n$ easy-to-estimate probabilities**.
+
+**Analogy:** Imagine predicting whether a student will pass an exam. Features include hours studied, hours slept, and cups of coffee. In reality, someone who studied many hours probably slept fewer hours and drank more coffee — the features are correlated. The naive assumption pretends these are unrelated, treating each one separately. It sounds absurd, but it works surprisingly well because:
+
+1. Even if individual probabilities are slightly off, the **ranking** of classes often stays correct.
+2. Errors in one feature's estimate tend to be offset by errors in another.
+3. The classifier only needs to get the **most probable class** right, not the exact probability value.
+
+## 3.2 Are Features Really Independent? (Spoiler: No)
+
+Let's check with the Iris dataset — the same one we've used in previous weeks.
+
+```{r independence-check, fig.height=5.5, fig.width=8}
 data(iris)
-glimpse(iris)
-```
 
-### Visual overview (pair plot feel, but beginner-friendly)
+cor_mat <- cor(iris[, 1:4])
 
-```{r iris-pairs, fig.height=6.5, fig.width=10}
-iris_long <- iris %>%
-  pivot_longer(cols = -Species, names_to = "feature", values_to = "value")
+cor_df <- as.data.frame(as.table(cor_mat))
+names(cor_df) <- c("Feature1", "Feature2", "Correlation")
 
-ggplot(iris_long, aes(x = value, fill = Species)) +
-  geom_histogram(bins = 22, alpha = 0.55, position = "identity") +
-  facet_wrap(~ feature, scales = "free", ncol = 2) +
-  scale_fill_manual(values = c("#1976D2", "#2E7D32", "#E53935")) +
-  labs(
-    title = "Iris Features by Species (Histograms)",
-    subtitle = "NB will learn one distribution per feature per class",
-    x = NULL, y = "Count", fill = "Species"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-```
-
-## 3.2 Train/Test Split (70/30)
-
-```{r iris-split}
-set.seed(MASTER_SEED)
-idx <- sample(1:nrow(iris), size = floor(0.7 * nrow(iris)))
-train <- iris[idx, ]
-test  <- iris[-idx, ]
-```
-
-## 3.3 Fit Naive Bayes (Gaussian)
-
-We use `naivebayes::naive_bayes()` (as shown in the Lecture 07 slides).
-
-```{r iris-fit}
-nb_iris <- naive_bayes(Species ~ ., data = train)
-nb_iris
-```
-
-## 3.4 Evaluate: Confusion Matrix + Accuracy
-
-```{r iris-eval}
-pred <- predict(nb_iris, test)
-cm <- table(Predicted = pred, Actual = test$Species)
-cm
-
-acc <- sum(diag(cm)) / sum(cm)
-acc
-```
-
-### Confusion matrix heatmap
-
-```{r iris-cm-heatmap, fig.height=4.5, fig.width=7}
-cm_df <- as.data.frame(cm)
-ggplot(cm_df, aes(x = Actual, y = Predicted, fill = Freq)) +
-  geom_tile(color = "white", linewidth = 0.6) +
-  geom_text(aes(label = Freq), fontface = "bold") +
-  scale_fill_gradient(low = "white", high = "#4E79A7") +
-  labs(
-    title = "Confusion Matrix (Iris) — Naive Bayes",
-    subtitle = sprintf("Test accuracy: %.1f%%", 100 * acc),
-    x = "Actual class", y = "Predicted class", fill = "Count"
-  ) +
-  theme_minimal()
-```
-
-## 3.5 What Did NB Learn? (Means and Variances)
-
-For Gaussian NB, each class learns a mean and variance per feature.
-
-```{r iris-params}
-nb_iris$tables
-```
-
-### Visualize class-conditional Gaussians (one feature)
-
-We’ll look at `Petal.Length` because it separates species well.
-
-```{r iris-gaussian-plot, fig.height=4.8, fig.width=9}
-feat <- "Petal.Length"
-
-params <- nb_iris$tables[[feat]] %>%
-  as.data.frame() %>%
-  rownames_to_column("Species") %>%
-  rename(mean = V1, sd = V2)
-
-x_grid <- seq(min(iris[[feat]]) - 0.5, max(iris[[feat]]) + 0.5, length.out = 400)
-
-dens_df <- params %>%
-  group_by(Species) %>%
-  do(tibble(x = x_grid,
-            density = dnorm(x_grid, mean = .$mean, sd = .$sd))) %>%
-  ungroup()
-
-ggplot() +
-  geom_histogram(data = iris, aes(x = .data[[feat]], y = after_stat(density), fill = Species),
-                 bins = 25, alpha = 0.25, color = "white") +
-  geom_line(data = dens_df, aes(x = x, y = density, color = Species), linewidth = 1.2) +
-  scale_fill_manual(values = c("#1976D2", "#2E7D32", "#E53935")) +
-  scale_color_manual(values = c("#1976D2", "#2E7D32", "#E53935")) +
-  labs(
-    title = "Gaussian NB Assumption Visualized (Petal.Length)",
-    subtitle = "Lines = learned normal distributions per class; bars = actual data histogram",
-    x = feat, y = "Density", color = "Species", fill = "Species"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-```
-
-## 3.6 Independence Assumption: Do Iris Features Look Independent?
-
-They are not perfectly independent. Let’s visualize correlations.
-
-```{r iris-corr-heatmap, fig.height=4.5, fig.width=7}
-corr <- cor(iris[, 1:4])
-corr_df <- as.data.frame(as.table(corr)) %>%
-  rename(Feature1 = Var1, Feature2 = Var2, Correlation = Freq)
-
-ggplot(corr_df, aes(x = Feature1, y = Feature2, fill = Correlation)) +
-  geom_tile(color = "white", linewidth = 0.6) +
-  geom_text(aes(label = round(Correlation, 2)), fontface = "bold", size = 3) +
+ggplot(cor_df, aes(x = Feature1, y = Feature2, fill = Correlation)) +
+  geom_tile(color = "white", linewidth = 1) +
+  geom_text(aes(label = sprintf("%.2f", Correlation)),
+            color = "black", size = 4, fontface = "bold") +
   scale_fill_gradient2(low = "#E53935", mid = "white", high = "#1976D2",
                        midpoint = 0, limits = c(-1, 1)) +
   labs(
-    title = "Feature Correlations (Iris)",
-    subtitle = "NB assumes conditional independence, but real features can be correlated",
-    x = NULL, y = NULL, fill = "r"
+    title = "Feature Correlation Matrix — Iris Dataset",
+    subtitle = "Petal.Length and Petal.Width are highly correlated (0.96) — clearly NOT independent!",
+    x = NULL, y = NULL
   ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 20, hjust = 1))
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
 ```
 
-> **Key point:** Even with correlation, NB can still classify well.
+> **Petal.Length and Petal.Width have a correlation of 0.96** — nearly perfectly correlated. The naive independence assumption is clearly violated. Yet, as we will see shortly, Naive Bayes still achieves excellent accuracy on this dataset. This is why the method is both "naive" and surprisingly effective.
 
----
+## 3.3 Why Does It Work Anyway?
 
-# Part 4: Multinomial Naive Bayes (Counts) — Tiny Text Example
-
-Multinomial NB is a common choice for text because text becomes **counts of words**.
-
-## 4.1 A Tiny “Spam vs Ham” Dataset
-
-This is intentionally small so you can see everything.
-
-```{r tiny-text-data}
-emails <- tibble(
-  text = c(
-    "urgent win money now",
-    "urgent claim your prize",
-    "win prize money money",
-    "meeting schedule for tomorrow",
-    "please review the report",
-    "lunch meeting tomorrow"
+```{r why-it-works-table, echo=FALSE}
+reasons <- data.frame(
+  Reason = c(
+    "Classification only needs the correct ranking",
+    "Estimation errors cancel out",
+    "Simple models generalise well",
+    "Few parameters to estimate"
   ),
-  label = factor(c("spam", "spam", "spam", "ham", "ham", "ham"))
-)
-emails
-```
-
-## 4.2 Turn Text into Word Counts (Bag-of-Words)
-
-```{r bow}
-bow <- emails %>%
-  mutate(id = row_number()) %>%
-  unnest_tokens(word, text) %>%
-  count(id, label, word, name = "n") %>%
-  ungroup()
-
-bow
-```
-
-### Vocabulary and document-term matrix
-
-```{r dtm}
-vocab <- sort(unique(bow$word))
-dtm <- bow %>%
-  tidyr::pivot_wider(names_from = word, values_from = n, values_fill = 0) %>%
-  arrange(id)
-
-dtm
-```
-
-## 4.3 Fit Multinomial NB
-
-`naivebayes::naive_bayes()` automatically chooses an appropriate model type for predictors.
-For word-count features, it uses a multinomial-like likelihood.
-
-```{r multinom-fit}
-train_x <- dtm %>% select(-id, -label)
-train_y <- dtm$label
-
-nb_text <- naive_bayes(x = train_x, y = train_y, laplace = 1)  # Laplace smoothing ON
-nb_text
-```
-
-## 4.4 Predict a New Message
-
-```{r text-predict}
-new_msg <- tibble(text = "urgent money prize")
-
-new_bow <- new_msg %>%
-  mutate(id = 1) %>%
-  unnest_tokens(word, text) %>%
-  count(id, word, name = "n") %>%
-  pivot_wider(names_from = word, values_from = n, values_fill = 0)
-
-# Align columns to training vocab (add missing words with 0, drop extras)
-for (w in setdiff(colnames(train_x), colnames(new_bow))) new_bow[[w]] <- 0
-new_bow <- new_bow %>% select(all_of(colnames(train_x)))
-
-pred_label <- predict(nb_text, new_bow)
-pred_prob  <- predict(nb_text, new_bow, type = "prob")
-
-pred_label
-pred_prob
-```
-
-### Visualize predicted probabilities
-
-```{r text-prob-plot, fig.height=4, fig.width=7}
-prob_df <- as.data.frame(pred_prob) %>%
-  pivot_longer(everything(), names_to = "class", values_to = "prob")
-
-ggplot(prob_df, aes(x = class, y = prob, fill = class)) +
-  geom_col(width = 0.6) +
-  geom_text(aes(label = percent(prob, accuracy = 0.1)),
-            vjust = -0.5, fontface = "bold") +
-  scale_y_continuous(labels = percent, limits = c(0, 1.05)) +
-  scale_fill_manual(values = c(spam = "#E53935", ham = "#1976D2"), guide = "none") +
-  labs(
-    title = "Naive Bayes Prediction for a New Text Message",
-    subtitle = "NB returns probabilities; we pick the larger one as the class",
-    x = NULL, y = "Probability"
-  ) +
-  theme_minimal()
-```
-
----
-
-# Part 5: The Zero-Frequency Problem (and Laplace Smoothing)
-
-## 5.1 The Problem
-
-If a word never appeared in training for a class, NB would assign:
-
-$$P(\text{word} \mid \text{class}) = 0$$
-
-Then the whole product becomes zero:
-
-$$\prod_j P(x_j \mid c) = 0$$
-
-Even if the rest of the message screams “spam.”
-
-## 5.2 Laplace Smoothing (Plain English)
-
-Laplace smoothing adds a small amount to every count, so nothing is exactly zero.
-
-In many textbooks this is described as:
-
-- add 1 to each word count (**Laplace**)
-- or add \(\alpha\) (**Lidstone**) where \(\alpha\) can be smaller than 1
-
-We already used `laplace = 1` above.
-
-### Quick demonstration with an “unseen word”
-
-```{r smoothing-demo}
-emails2 <- tibble(
-  text = c("win money", "win prize", "team meeting", "project meeting"),
-  label = factor(c("spam", "spam", "ham", "ham"))
-)
-
-bow2 <- emails2 %>%
-  mutate(id = row_number()) %>%
-  unnest_tokens(word, text) %>%
-  count(id, label, word, name = "n") %>%
-  pivot_wider(names_from = word, values_from = n, values_fill = 0)
-
-x2 <- bow2 %>% select(-id, -label)
-y2 <- bow2$label
-
-nb_no_smooth <- naive_bayes(x2, y2, laplace = 0)
-nb_smooth    <- naive_bayes(x2, y2, laplace = 1)
-
-msg <- tibble(text = "win lottery")  # 'lottery' never seen in training
-msg_bow <- msg %>%
-  mutate(id = 1) %>%
-  unnest_tokens(word, text) %>%
-  count(id, word, name = "n") %>%
-  pivot_wider(names_from = word, values_from = n, values_fill = 0)
-
-for (w in setdiff(colnames(x2), colnames(msg_bow))) msg_bow[[w]] <- 0
-msg_bow <- msg_bow %>% select(all_of(colnames(x2)))
-
-prob_no  <- predict(nb_no_smooth, msg_bow, type = "prob")
-prob_yes <- predict(nb_smooth,    msg_bow, type = "prob")
-
-list(no_smoothing = prob_no, laplace_1 = prob_yes)
-```
-
-> **Key lesson:** In real NLP, smoothing is usually not optional — it prevents “single unseen word kills everything.”
-
----
-
-# Part 6: Practical Tips (When NB Works Well)
-
-```{r nb-pros-cons, echo=FALSE}
-tbl <- tibble(
-  Topic = c(
-    "Speed",
-    "Data size needs",
-    "Good for text?",
-    "Probability calibration",
-    "Independence assumption",
-    "Mixed feature types"
-  ),
-  Plain_English = c(
-    "Very fast to train and predict (mostly counting + simple math).",
-    "Often works well even with smaller datasets compared to more complex models.",
-    "Yes — a classic baseline for spam filtering and document classification.",
-    "Probabilities can be overconfident; use them carefully.",
-    "Usually not true, but NB can still classify well.",
-    "Works, but choose the right variant (Gaussian vs Multinomial vs Bernoulli)."
+  Explanation = c(
+    "NB doesn't need perfect probability estimates — it just needs the correct class to have the HIGHEST score. Even biased estimates often preserve the right ordering.",
+    "If P(x₁|C) is overestimated and P(x₂|C) is underestimated, the product can still be approximately correct.",
+    "With fewer parameters than complex models, NB is less prone to overfitting, especially with small training sets.",
+    "For p features and K classes, NB estimates only p×K parameters. A full joint model would need K × (exponential in p) parameters."
   )
 )
-knitr::kable(tbl, caption = "Naive Bayes: Pros & Cons (Beginner Summary)")
+knitr::kable(reasons, col.names = c("Reason", "Explanation"),
+             caption = "Why Naive Bayes Works Despite the Independence Assumption")
 ```
+
+---
+
+# Part 4: Types of Naive Bayes Classifiers
+
+Different types of data call for different assumptions about how feature values are distributed within each class. This is what distinguishes the three main Naive Bayes variants.
+
+## 4.1 Gaussian Naive Bayes — For Continuous Features
+
+When features are continuous (like height, weight, or petal length), we assume each feature follows a **normal (Gaussian) distribution** within each class:
+
+$$P(x_i \mid C_k) = \frac{1}{\sqrt{2\pi\sigma_{k}^2}} \exp\left(-\frac{(x_i - \mu_{k})^2}{2\sigma_{k}^2}\right)$$
+
+In plain English: for each class, we compute the **mean** ($\mu$) and **standard deviation** ($\sigma$) of each feature. To evaluate a new data point, we ask: *"How likely is this value under each class's bell curve?"*
+
+```{r gaussian-nb-intuition, fig.height=6, fig.width=11}
+set.seed(MASTER_SEED)
+
+iris_long <- iris %>%
+  pivot_longer(cols = 1:4, names_to = "Feature", values_to = "Value")
+
+ggplot(iris_long, aes(x = Value, fill = Species, color = Species)) +
+  geom_density(alpha = 0.35, linewidth = 0.8) +
+  facet_wrap(~ Feature, scales = "free", ncol = 2) +
+  scale_fill_manual(values = c(setosa = "#42A5F5", versicolor = "#66BB6A", virginica = "#EF5350")) +
+  scale_color_manual(values = c(setosa = "#1565C0", versicolor = "#2E7D32", virginica = "#C62828")) +
+  labs(
+    title = "Gaussian NB Intuition: Each Feature Has a Bell Curve Per Class",
+    subtitle = "For a new flower, we ask: 'Under which species' bell curve is this measurement most likely?'",
+    x = "Feature Value", y = "Density"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        strip.text = element_text(face = "bold"))
+```
+
+> **How to read:** Each colored curve is a Gaussian distribution estimated from training data. When a new flower arrives with Petal.Length = 5.0, we evaluate that value under each species' curve. The species whose curve gives the highest density "claims" that evidence.
+
+## 4.2 How Gaussian NB Makes a Decision — Feature by Feature
+
+Let's zoom into a single test prediction and see how each feature contributes.
+
+```{r gaussian-feature-contribution, fig.height=6, fig.width=11}
+set.seed(MASTER_SEED)
+test_point <- iris[100, ]  # a versicolor
+
+stats_df <- iris %>%
+  group_by(Species) %>%
+  summarise(across(1:4, list(mean = mean, sd = sd), .names = "{.col}_{.fn}"))
+
+feature_names <- names(iris)[1:4]
+species_levels <- levels(iris$Species)
+
+contrib_list <- lapply(feature_names, function(feat) {
+  x_val <- test_point[[feat]]
+  x_range <- seq(min(iris[[feat]]) - 0.5, max(iris[[feat]]) + 0.5, length.out = 300)
+
+  curves <- lapply(species_levels, function(sp) {
+    mu <- stats_df[[paste0(feat, "_mean")]][stats_df$Species == sp]
+    sg <- stats_df[[paste0(feat, "_sd")]][stats_df$Species == sp]
+    data.frame(x = x_range, density = dnorm(x_range, mu, sg), Species = sp)
+  }) %>% do.call(rbind, .)
+
+  densities_at_x <- sapply(species_levels, function(sp) {
+    mu <- stats_df[[paste0(feat, "_mean")]][stats_df$Species == sp]
+    sg <- stats_df[[paste0(feat, "_sd")]][stats_df$Species == sp]
+    dnorm(x_val, mu, sg)
+  })
+
+  ggplot(curves, aes(x = x, y = density, fill = Species, color = Species)) +
+    geom_area(alpha = 0.25, position = "identity") +
+    geom_line(linewidth = 0.8) +
+    geom_vline(xintercept = x_val, linetype = "dashed", linewidth = 1, color = "black") +
+    annotate("text", x = x_val, y = max(curves$density) * 0.95,
+             label = sprintf("x = %.1f", x_val),
+             hjust = -0.15, fontface = "bold", size = 3.5) +
+    scale_fill_manual(values = c(setosa = "#42A5F5", versicolor = "#66BB6A", virginica = "#EF5350")) +
+    scale_color_manual(values = c(setosa = "#1565C0", versicolor = "#2E7D32", virginica = "#C62828")) +
+    labs(title = feat, x = NULL, y = "Density") +
+    theme_minimal(base_size = 9) +
+    theme(legend.position = "none")
+})
+
+do.call(grid.arrange, c(contrib_list, ncol = 2,
+  top = sprintf("Gaussian NB: How Each Feature Evaluates Test Point #100 (Actual: %s)\nDashed line = observed value; tallest curve at the dashed line = strongest evidence for that species",
+                as.character(test_point$Species))))
+```
+
+## 4.3 Multinomial Naive Bayes — For Count Data
+
+When features represent **counts** or **frequencies** (such as word counts in a document), we use the Multinomial distribution:
+
+$$P(\mathbf{x} \mid C_k) = \frac{(\sum_i x_i)!}{\prod_i x_i!} \prod_{i=1}^{n} p_{ki}^{x_i}$$
+
+This is the go-to model for **text classification**. Each document is represented as a vector of word frequencies (the "bag of words" model), and the classifier learns which words are most frequent in each category.
+
+## 4.4 Bernoulli Naive Bayes — For Binary Features
+
+When features are **binary** (present/absent, yes/no, 0/1), we use the Bernoulli distribution:
+
+$$P(\mathbf{x} \mid C_k) = \prod_{i=1}^{n} p_{ki}^{x_i} (1 - p_{ki})^{(1 - x_i)}$$
+
+Unlike Multinomial NB, Bernoulli NB explicitly models the **absence** of features. This makes it especially useful for short text classification where knowing a word is *missing* is informative.
+
+## 4.5 Comparison: When to Use Which?
+
+```{r nb-type-comparison, echo=FALSE}
+nb_types <- data.frame(
+  Variant = c("Gaussian NB", "Multinomial NB", "Bernoulli NB"),
+  `Feature Type` = c("Continuous (real-valued)", "Counts / Frequencies", "Binary (0/1)"),
+  `Typical Use Case` = c(
+    "Sensor readings, measurements, medical data",
+    "Text classification (word counts), spam filtering",
+    "Short text classification, survey data (yes/no)"
+  ),
+  `Key Assumption` = c(
+    "Features follow a normal distribution within each class",
+    "Features are generated by a multinomial distribution",
+    "Features are binary; explicitly penalises absent features"
+  ),
+  `R / sklearn` = c(
+    "e1071::naiveBayes() / GaussianNB",
+    "Not in e1071 (use quanteda) / MultinomialNB",
+    "Not in e1071 (custom) / BernoulliNB"
+  )
+)
+knitr::kable(nb_types, col.names = c("Variant", "Feature Type", "Typical Use Case",
+                                      "Key Assumption", "R / Python"),
+             caption = "Naive Bayes Variants: Which One to Use?")
+```
+
+---
+
+# Part 5: Gaussian Naive Bayes on Iris — Building the Model
+
+## 5.1 Train/Test Split
+
+We use the same Iris dataset and the same split ratio as previous weeks for a fair comparison.
+
+```{r iris-split}
+data(iris)
+set.seed(MASTER_SEED)
+train_idx <- sample(1:nrow(iris), floor(0.7 * nrow(iris)))
+iris_train <- iris[train_idx, ]
+iris_test  <- iris[-train_idx, ]
+
+cat(sprintf("Training set: %d observations\nTest set: %d observations\n",
+            nrow(iris_train), nrow(iris_test)))
+```
+
+## 5.2 Training the Classifier
+
+R's `e1071::naiveBayes()` automatically detects continuous features and fits Gaussian distributions.
+
+```{r train-nb}
+nb_model <- naiveBayes(Species ~ ., data = iris_train)
+print(nb_model)
+```
+
+> **Reading the output:** For each feature and each species, the model reports a **mean** and a **standard deviation**. These are the $\mu$ and $\sigma$ parameters of the Gaussian distributions we saw in Part 4.
+
+## 5.3 Understanding the Learned Parameters
+
+```{r learned-params-viz, fig.height=6, fig.width=11}
+param_list <- lapply(1:4, function(i) {
+  feat <- names(iris)[i]
+  tbl <- nb_model$tables[[i]]
+  param_df <- data.frame(
+    Species = rownames(tbl),
+    Mean    = tbl[, 1],
+    SD      = tbl[, 2]
+  )
+
+  x_range <- seq(min(iris[[feat]]) - 1, max(iris[[feat]]) + 1, length.out = 300)
+
+  curves <- lapply(1:3, function(s) {
+    data.frame(
+      x = x_range,
+      density = dnorm(x_range, param_df$Mean[s], param_df$SD[s]),
+      Species = param_df$Species[s]
+    )
+  }) %>% do.call(rbind, .)
+
+  ggplot(curves, aes(x = x, y = density, fill = Species, color = Species)) +
+    geom_area(alpha = 0.3, position = "identity") +
+    geom_line(linewidth = 0.9) +
+    scale_fill_manual(values = c(setosa = "#42A5F5", versicolor = "#66BB6A", virginica = "#EF5350")) +
+    scale_color_manual(values = c(setosa = "#1565C0", versicolor = "#2E7D32", virginica = "#C62828")) +
+    labs(title = feat, x = feat, y = "Density") +
+    theme_minimal(base_size = 9) +
+    theme(legend.position = "bottom")
+})
+
+do.call(grid.arrange, c(param_list, ncol = 2,
+  top = "Gaussian NB: The Learned Bell Curves for Each Feature × Species\n(These curves ARE the model — no boundaries, no trees, just distributions)"))
+```
+
+> **This is the entire model.** Unlike Decision Trees (which store a tree structure) or SVMs (which store support vectors), a Gaussian NB model is just a table of means and standard deviations. This makes it extremely compact and fast.
+
+## 5.4 Prediction and Evaluation
+
+```{r nb-predict}
+nb_pred <- predict(nb_model, iris_test)
+nb_acc  <- mean(nb_pred == iris_test$Species)
+
+cat(sprintf("Naive Bayes Test Accuracy: %.1f%%\n\n", nb_acc * 100))
+
+conf_mat <- table(Predicted = nb_pred, Actual = iris_test$Species)
+print(conf_mat)
+```
+
+```{r confusion-heatmap, fig.height=4.5, fig.width=6}
+conf_df <- as.data.frame(conf_mat)
+names(conf_df) <- c("Predicted", "Actual", "Count")
+
+ggplot(conf_df, aes(x = Actual, y = Predicted, fill = Count)) +
+  geom_tile(color = "white", linewidth = 1.5) +
+  geom_text(aes(label = Count), size = 6, fontface = "bold") +
+  scale_fill_gradient(low = "white", high = "#1976D2") +
+  labs(
+    title = "Confusion Matrix — Naive Bayes on Iris Test Set",
+    subtitle = sprintf("Overall Accuracy: %.1f%%", nb_acc * 100),
+    x = "Actual Class", y = "Predicted Class"
+  ) +
+  theme_minimal(base_size = 12) +
+  coord_equal()
+```
+
+## 5.5 Posterior Probabilities: How Confident Is the Model?
+
+Unlike SVMs, Naive Bayes naturally produces **probability estimates** for each class.
+
+```{r nb-probabilities, fig.height=5, fig.width=9}
+nb_probs <- predict(nb_model, iris_test, type = "raw")
+
+prob_df <- as.data.frame(nb_probs) %>%
+  mutate(
+    obs = 1:n(),
+    actual = iris_test$Species,
+    predicted = nb_pred,
+    correct = (predicted == actual),
+    confidence = apply(nb_probs, 1, max)
+  )
+
+prob_long <- prob_df %>%
+  pivot_longer(cols = c(setosa, versicolor, virginica),
+               names_to = "class", values_to = "prob")
+
+ggplot(prob_long, aes(x = class, y = factor(obs), fill = prob)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  geom_text(aes(label = sprintf("%.2f", prob)), size = 2.2) +
+  facet_grid(actual ~ ., scales = "free_y", space = "free") +
+  scale_fill_gradient(low = "white", high = "#1976D2") +
+  labs(
+    title = "Naive Bayes: Predicted Class Probabilities for Each Test Observation",
+    subtitle = "Each row is a test observation; columns show probability of each species",
+    x = "Predicted Class", y = "Observation", fill = "Probability"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(strip.text.y = element_text(angle = 0, face = "bold"))
+```
+
+## 5.6 Decision Boundary on Petal Features
+
+Let's visualise the decision regions — the same 2D view we used in Weeks 02-05 for a direct comparison.
+
+```{r nb-decision-boundary, fig.height=5.5, fig.width=8}
+iris_2d <- iris[, c("Petal.Length", "Petal.Width", "Species")]
+train_2d <- iris_2d[train_idx, ]
+test_2d  <- iris_2d[-train_idx, ]
+
+nb_2d <- naiveBayes(Species ~ ., data = train_2d)
+
+grid_nb <- expand.grid(
+  Petal.Length = seq(0.5, 7.5, length.out = 200),
+  Petal.Width  = seq(0, 2.8, length.out = 200)
+)
+grid_nb$pred <- predict(nb_2d, grid_nb)
+
+palette_iris <- c(setosa = "#AED6F1", versicolor = "#A9DFBF", virginica = "#F9E79F")
+point_colors <- c(setosa = "#1A5276", versicolor = "#1E8449", virginica = "#922B21")
+
+ggplot() +
+  geom_tile(data = grid_nb,
+            aes(x = Petal.Length, y = Petal.Width, fill = pred), alpha = 0.5) +
+  geom_point(data = train_2d,
+             aes(x = Petal.Length, y = Petal.Width, color = Species, shape = Species),
+             size = 2) +
+  scale_fill_manual(values = palette_iris, guide = "none") +
+  scale_color_manual(values = point_colors) +
+  labs(
+    title = "Naive Bayes Decision Boundary (Petal Features, Gaussian)",
+    subtitle = "Smooth, curved boundaries emerge from the overlap of Gaussian distributions",
+    x = "Petal Length (cm)", y = "Petal Width (cm)", color = "Species"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+> **Compare with previous weeks:** Decision Trees create rectangular regions. Random Forests smooth those rectangles. SVMs draw curved margins around support vectors. Naive Bayes creates **smooth, elliptical** regions — reflecting the underlying Gaussian distributions.
+
+---
+
+# Part 6: The Zero-Frequency Problem & Laplace Smoothing
+
+## 6.1 The Problem: A Single Zero Kills Everything
+
+Suppose in our tennis dataset, "Overcast" weather **never** appears when Play = No. Then:
+
+$$P(\text{Overcast} \mid \text{No}) = 0$$
+
+Since Naive Bayes multiplies all feature probabilities together, **one zero wipes out the entire product** — no matter how strong the evidence from other features:
+
+$$P(X \mid \text{No}) = 0 \times \ldots = 0$$
+
+This is clearly wrong. Just because we haven't *seen* a combination in training doesn't mean it's *impossible*.
+
+## 6.2 The Fix: Laplace Smoothing (Add-One Smoothing)
+
+The solution is simple: **add a small count** (typically 1) to every feature-class combination:
+
+$$P(x_i \mid C_k) = \frac{\text{count}(x_i, C_k) + \alpha}{\text{count}(C_k) + \alpha \times n_i}$$
+
+where $\alpha$ is the smoothing parameter (1 for Laplace smoothing) and $n_i$ is the number of possible values for feature $i$.
+
+**Analogy:** Imagine you're rating restaurants. You've eaten at Restaurant A ten times and loved it every time (10/10). Restaurant B is brand new — zero reviews. Does that mean Restaurant B has a 0% chance of being good? Of course not. Laplace smoothing is like giving every restaurant 1 positive and 1 negative review before anyone eats there — a modest starting point that gets overwhelmed by real data as reviews accumulate.
+
+```{r laplace-smoothing-viz, fig.height=5, fig.width=10}
+outlook_vals <- c("Sunny", "Overcast", "Rain")
+
+raw_counts_no <- sapply(outlook_vals, function(v) sum(tennis_no$Outlook == v))
+raw_probs_no  <- raw_counts_no / no_count
+
+alpha <- 1
+n_categories <- length(outlook_vals)
+smoothed_probs_no <- (raw_counts_no + alpha) / (no_count + alpha * n_categories)
+
+smooth_df <- data.frame(
+  Outlook = rep(outlook_vals, 2),
+  Method  = rep(c("Without Smoothing", "With Laplace Smoothing (α=1)"), each = 3),
+  Probability = c(raw_probs_no, smoothed_probs_no)
+)
+smooth_df$Method <- factor(smooth_df$Method,
+                           levels = c("Without Smoothing", "With Laplace Smoothing (α=1)"))
+
+ggplot(smooth_df, aes(x = Outlook, y = Probability, fill = Method)) +
+  geom_col(position = "dodge", width = 0.6) +
+  geom_text(aes(label = sprintf("%.3f", Probability)),
+            position = position_dodge(width = 0.6), vjust = -0.4,
+            fontface = "bold", size = 3.8) +
+  scale_fill_manual(values = c("Without Smoothing" = "#E53935",
+                                "With Laplace Smoothing (α=1)" = "#4CAF50")) +
+  scale_y_continuous(limits = c(0, 0.7)) +
+  geom_hline(yintercept = 0, color = "grey30") +
+  annotate("text", x = "Overcast", y = 0.05,
+           label = "Zero!\nThis kills\nthe product",
+           color = "#E53935", fontface = "italic", size = 3.5) +
+  labs(
+    title = "Laplace Smoothing: Fixing the Zero-Frequency Problem",
+    subtitle = "P(Outlook | Play = No) — 'Overcast' never appeared with No, causing a zero probability",
+    x = "Outlook Value", y = "P(Outlook | Play = No)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+> **Before smoothing:** P(Overcast | No) = 0 → entire product becomes 0. **After smoothing:** P(Overcast | No) = 0.125 → small but non-zero, allowing other features to still influence the decision.
+
+## 6.3 How Smoothing Affects Predictions
+
+```{r smoothing-effect-table, echo=FALSE}
+smooth_info <- data.frame(
+  `Alpha Value` = c("α = 0", "α = 1 (Laplace)", "α < 1 (Lidstone)", "α → ∞"),
+  Effect = c(
+    "No smoothing — zero probabilities possible, can crash the model",
+    "Standard fix — adds 1 pseudo-count to every category. Most common choice.",
+    "Milder smoothing — useful when you have large training sets and want less bias",
+    "All probabilities become 1/K (uniform) — the model ignores the data entirely"
+  )
+)
+knitr::kable(smooth_info, col.names = c("Alpha Value", "Effect"),
+             caption = "The Smoothing Parameter α Controls How Much We Trust the Data vs. the Uniform Prior")
+```
+
+---
+
+# Part 7: Naive Bayes for Text Classification
+
+## 7.1 The Bag-of-Words Model
+
+Text classification is Naive Bayes's most famous application. The idea:
+
+1. **Tokenise** each document into individual words.
+2. **Count** how often each word appears → a frequency vector.
+3. Ignore word order (the "bag" metaphor — imagine dumping all words into a bag and shaking).
+4. Apply Multinomial Naive Bayes to the word-count vectors.
+
+## 7.2 A Spam Filtering Example
+
+Let's build a tiny spam filter from scratch to see the mechanics.
+
+```{r spam-filter-example}
+set.seed(MASTER_SEED)
+
+emails <- data.frame(
+  text = c(
+    "buy cheap pills now discount",
+    "win free prize money today",
+    "urgent offer limited time deal",
+    "buy discount offer free shipping",
+    "meeting tomorrow at the office",
+    "lunch with team at noon today",
+    "project deadline is next week",
+    "please review the attached report",
+    "can we schedule a meeting today",
+    "free upgrade for your account now"
+  ),
+  label = c("spam","spam","spam","spam",
+            "ham","ham","ham","ham","ham","spam")
+)
+
+knitr::kable(emails, col.names = c("Email Text", "Label"),
+             caption = "A Tiny Email Corpus for Spam Classification")
+```
+
+```{r word-frequency-viz, fig.height=5.5, fig.width=11}
+all_words <- emails %>%
+  mutate(words = strsplit(text, " ")) %>%
+  unnest(words) %>%
+  count(label, words) %>%
+  group_by(label) %>%
+  mutate(freq = n / sum(n)) %>%
+  ungroup()
+
+top_words <- all_words %>%
+  group_by(words) %>%
+  summarise(total = sum(n)) %>%
+  top_n(15, total) %>%
+  pull(words)
+
+word_plot_df <- all_words %>% filter(words %in% top_words)
+
+ggplot(word_plot_df, aes(x = reorder(words, freq), y = freq, fill = label)) +
+  geom_col(position = "dodge", width = 0.6) +
+  coord_flip() +
+  scale_fill_manual(values = c(ham = "#4CAF50", spam = "#E53935")) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Word Frequencies: Spam vs. Ham",
+    subtitle = "Words like 'free', 'buy', 'discount' are strong spam indicators",
+    x = NULL, y = "Frequency Within Class", fill = "Class"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+```{r manual-text-nb}
+spam_emails <- emails$text[emails$label == "spam"]
+ham_emails  <- emails$text[emails$label == "ham"]
+
+spam_words <- unlist(strsplit(paste(spam_emails, collapse = " "), " "))
+ham_words  <- unlist(strsplit(paste(ham_emails, collapse = " "), " "))
+vocabulary <- unique(c(spam_words, ham_words))
+V <- length(vocabulary)
+
+prior_spam_txt <- sum(emails$label == "spam") / nrow(emails)
+prior_ham_txt  <- sum(emails$label == "ham") / nrow(emails)
+
+# Laplace-smoothed word probabilities
+p_word_spam <- sapply(vocabulary, function(w) {
+  (sum(spam_words == w) + 1) / (length(spam_words) + V)
+})
+p_word_ham <- sapply(vocabulary, function(w) {
+  (sum(ham_words == w) + 1) / (length(ham_words) + V)
+})
+
+# Classify a new email
+new_email <- "free discount meeting today"
+new_words <- strsplit(new_email, " ")[[1]]
+
+log_spam <- log(prior_spam_txt) + sum(log(p_word_spam[new_words]), na.rm = TRUE)
+log_ham  <- log(prior_ham_txt)  + sum(log(p_word_ham[new_words]), na.rm = TRUE)
+
+cat(sprintf("New email: '%s'\n\n", new_email))
+cat(sprintf("Log-score (spam): %.4f\n", log_spam))
+cat(sprintf("Log-score (ham):  %.4f\n\n", log_ham))
+
+# Convert to probabilities using log-sum-exp trick
+max_log <- max(log_spam, log_ham)
+p_spam_new <- exp(log_spam - max_log) / (exp(log_spam - max_log) + exp(log_ham - max_log))
+p_ham_new  <- 1 - p_spam_new
+
+cat(sprintf("P(spam | email) = %.1f%%\n", p_spam_new * 100))
+cat(sprintf("P(ham  | email) = %.1f%%\n", p_ham_new * 100))
+cat(sprintf("Prediction: %s\n", ifelse(p_spam_new > p_ham_new, "SPAM", "HAM")))
+```
+
+> **Note:** We use **log-probabilities** instead of raw probabilities. Multiplying many small numbers leads to numerical underflow (the result becomes indistinguishable from zero). Taking logarithms converts products to sums, avoiding this problem.
+
+---
+
+# Part 8: Model Comparison — NB vs. Everything Else
+
+## 8.1 Decision Boundaries: Four Models Side by Side
+
+Let's put all four classification methods we've learned on the same 2D Iris task.
+
+```{r model-comparison-setup}
+set.seed(MASTER_SEED)
+
+grid_comp <- expand.grid(
+  Petal.Length = seq(0.5, 7.5, length.out = 200),
+  Petal.Width  = seq(0, 2.8, length.out = 200)
+)
+```
+
+```{r model-comparison-plot, fig.height=6, fig.width=11}
+# Decision Tree
+dt_comp <- rpart(Species ~ Petal.Length + Petal.Width, data = train_2d,
+                 method = "class", control = rpart.control(maxdepth = 4))
+
+# Random Forest
+rf_comp <- randomForest(Species ~ Petal.Length + Petal.Width, data = train_2d, ntree = 200)
+
+# SVM (RBF)
+svm_comp <- svm(Species ~ Petal.Length + Petal.Width, data = train_2d,
+                kernel = "radial", cost = 5, gamma = 1, scale = TRUE)
+
+# Naive Bayes (already trained as nb_2d)
+
+models_list <- list(
+  list(name = "Decision Tree",  pred_fn = function(g) predict(dt_comp, g, type = "class")),
+  list(name = "Random Forest",  pred_fn = function(g) predict(rf_comp, g)),
+  list(name = "SVM (RBF)",      pred_fn = function(g) predict(svm_comp, g)),
+  list(name = "Naive Bayes",    pred_fn = function(g) predict(nb_2d, g))
+)
+
+plots_comp <- lapply(models_list, function(item) {
+  grid_comp$pred <- item$pred_fn(grid_comp)
+  test_pred <- item$pred_fn(test_2d)
+  test_acc  <- mean(test_pred == test_2d$Species)
+
+  ggplot() +
+    geom_tile(data = grid_comp, aes(x = Petal.Length, y = Petal.Width, fill = pred), alpha = 0.5) +
+    geom_point(data = test_2d, aes(x = Petal.Length, y = Petal.Width, color = Species),
+               size = 1.8, alpha = 0.8) +
+    scale_fill_manual(values = palette_iris, guide = "none") +
+    scale_color_manual(values = point_colors, guide = "none") +
+    labs(
+      title = item$name,
+      subtitle = sprintf("Test accuracy: %.1f%%", test_acc * 100),
+      x = "Petal Length", y = "Petal Width"
+    ) +
+    theme_minimal(base_size = 9) +
+    theme(plot.title = element_text(face = "bold"))
+})
+
+do.call(grid.arrange, c(plots_comp, ncol = 4,
+  top = "Decision Boundary Comparison: DT vs. RF vs. SVM vs. Naive Bayes (Iris Petal Features)"))
+```
+
+```{r accuracy-comparison-table, echo=FALSE}
+acc_results <- data.frame(
+  Model = sapply(models_list, function(x) x$name),
+  Test_Accuracy = sapply(models_list, function(item) {
+    pred <- item$pred_fn(test_2d)
+    round(mean(pred == test_2d$Species) * 100, 1)
+  })
+)
+knitr::kable(acc_results, col.names = c("Model", "Test Accuracy (%)"),
+             caption = "Test Accuracy Comparison on Iris Petal Features")
+```
+
+## 8.2 Boundary Shape Comparison
+
+```{r boundary-shapes-table, echo=FALSE}
+shapes <- data.frame(
+  Model = c("Decision Tree", "Random Forest", "SVM (RBF)", "Naive Bayes (Gaussian)"),
+  `Boundary Shape` = c(
+    "Rectangular, axis-aligned — each split is a horizontal or vertical line",
+    "Smoothed rectangles — averaging many trees softens the edges",
+    "Smooth, curved margins — the kernel trick creates flexible boundaries",
+    "Smooth, elliptical — boundaries follow the contours of Gaussian distributions"
+  ),
+  `What Drives It` = c(
+    "Greedy, one-feature-at-a-time splits",
+    "Averaging over hundreds of diverse trees",
+    "Maximising the margin between support vectors",
+    "The intersection of class-conditional probability density curves"
+  )
+)
+knitr::kable(shapes, col.names = c("Model", "Boundary Shape", "What Drives It"),
+             caption = "How Each Model Creates Its Decision Boundary")
+```
+
+## 8.3 Training Speed Comparison
+
+One of Naive Bayes's biggest advantages is speed.
+
+```{r speed-comparison, fig.height=4, fig.width=8}
+set.seed(MASTER_SEED)
+
+n_reps <- 50
+times <- data.frame(
+  Model = character(),
+  Time_ms = numeric()
+)
+
+for (r in 1:n_reps) {
+  t_nb  <- system.time(naiveBayes(Species ~ ., data = iris_train))["elapsed"]
+  t_dt  <- system.time(rpart(Species ~ ., data = iris_train, method = "class"))["elapsed"]
+  t_rf  <- system.time(randomForest(Species ~ ., data = iris_train, ntree = 200))["elapsed"]
+  t_svm <- system.time(svm(Species ~ ., data = iris_train, kernel = "radial"))["elapsed"]
+
+  times <- rbind(times, data.frame(
+    Model = c("Naive Bayes", "Decision Tree", "Random Forest", "SVM (RBF)"),
+    Time_ms = c(t_nb, t_dt, t_rf, t_svm) * 1000
+  ))
+}
+
+time_summary <- times %>%
+  group_by(Model) %>%
+  summarise(Mean_ms = mean(Time_ms), .groups = "drop") %>%
+  mutate(Model = factor(Model, levels = c("Naive Bayes", "Decision Tree", "SVM (RBF)", "Random Forest")))
+
+ggplot(time_summary, aes(x = reorder(Model, Mean_ms), y = Mean_ms, fill = Model)) +
+  geom_col(width = 0.55) +
+  geom_text(aes(label = sprintf("%.2f ms", Mean_ms)),
+            hjust = -0.1, fontface = "bold", size = 4) +
+  coord_flip(xlim = NULL, ylim = c(0, max(time_summary$Mean_ms) * 1.3)) +
+  scale_fill_manual(values = c(
+    "Naive Bayes"   = "#4CAF50",
+    "Decision Tree" = "#FF9800",
+    "SVM (RBF)"     = "#2196F3",
+    "Random Forest" = "#9C27B0"
+  )) +
+  labs(
+    title = "Training Time Comparison (Iris Dataset, average of 50 runs)",
+    subtitle = "Naive Bayes is the fastest — it only computes means and standard deviations",
+    x = NULL, y = "Mean Training Time (milliseconds)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+> **Why is NB so fast?** Training a Gaussian NB model requires only **one pass** through the data to compute the mean and standard deviation of each feature for each class. There is no iterative optimisation, no tree-building, no kernel computation. For $n$ samples, $p$ features, and $K$ classes, the training complexity is $O(n \times p \times K)$.
+
+---
+
+# Part 9: Advantages, Disadvantages & Practical Tips
+
+## 9.1 When to Use Naive Bayes
+
+```{r pros-cons-table, echo=FALSE}
+pros_cons <- data.frame(
+  Property = c(
+    "Training speed",
+    "Prediction speed",
+    "Small training sets",
+    "High-dimensional data",
+    "Text classification",
+    "Probability estimates",
+    "Feature independence",
+    "Continuous features",
+    "Complex decision boundaries",
+    "Outlier robustness",
+    "Feature scaling required"
+  ),
+  Assessment = c(
+    "Excellent — one of the fastest classifiers to train (just compute means and counts)",
+    "Excellent — prediction is a simple product of probabilities",
+    "Excellent — few parameters means less overfitting with limited data",
+    "Good — handles thousands of features (e.g., word vocabularies) without trouble",
+    "Excellent — Multinomial NB is the classic baseline for spam filtering and document classification",
+    "Native — NB directly outputs class probabilities (unlike SVM which needs Platt scaling)",
+    "Poor assumption — features are rarely independent; model still works but probabilities may be poorly calibrated",
+    "Moderate — Gaussian assumption may not hold; consider discretising or using kernel density estimation",
+    "Limited — boundaries are always smooth ellipses (Gaussian) or linear (Multinomial), cannot capture XOR-like patterns",
+    "Moderate — less robust than tree-based methods to extreme outliers",
+    "Not required — NB is not distance-based, so feature scaling does not affect results"
+  )
+)
+knitr::kable(pros_cons, col.names = c("Property", "Naive Bayes Assessment"),
+             caption = "Naive Bayes: Strengths and Weaknesses")
+```
+
+## 9.2 Decision Guide
+
+```{r decision-guide, echo=FALSE}
+guide <- data.frame(
+  Scenario = c(
+    "Small dataset, need fast results",
+    "Text classification / spam filtering",
+    "Need probability estimates",
+    "Features are highly correlated",
+    "Complex, non-linear boundary needed",
+    "Very large dataset (millions of rows)",
+    "Need interpretable model",
+    "Baseline model for comparison",
+    "Real-time / streaming prediction"
+  ),
+  Recommendation = c(
+    "Naive Bayes — few parameters, fast training, low overfitting risk",
+    "Multinomial Naive Bayes — the standard baseline for bag-of-words tasks",
+    "Naive Bayes — produces probabilities natively (but may be poorly calibrated)",
+    "Random Forest or SVM — NB's independence assumption is most harmful here",
+    "SVM (RBF) or Random Forest — NB boundaries are too simple",
+    "Naive Bayes — scales linearly with data size; RF and SVM are much slower",
+    "Decision Tree — NB doesn't explain which features matter for individual predictions",
+    "Naive Bayes — always try NB first as a fast, simple baseline",
+    "Naive Bayes — prediction is essentially instant"
+  )
+)
+knitr::kable(guide, col.names = c("Scenario", "Recommendation"),
+             caption = "Practical Guide: When to Choose Naive Bayes vs. Other Models")
+```
+
+## 9.3 Practical Tips
+
+1. **Always try NB as a baseline** — if NB gets 90% accuracy in seconds, you'll know how much effort a complex model is worth.
+2. **Use Laplace smoothing** — set $\alpha = 1$ to avoid zero probabilities. R's `naiveBayes()` uses Laplace smoothing by default for categorical features (set via the `laplace` argument).
+3. **Check the Gaussian assumption** — if your continuous features are clearly non-normal (e.g., heavy-tailed, bimodal), consider **discretising** them into bins or using **kernel density estimation**.
+4. **Feature scaling is NOT needed** — unlike SVM, NB is not distance-based. Scaling has no effect.
+5. **Reduce correlated features** — highly correlated features violate the independence assumption and can bias predictions. Consider PCA or removing redundant features.
+6. **For text data, use tf-idf** — raw word counts give too much weight to common words. Tf-idf downweights frequent, uninformative words.
+
+---
+
+# Part 10: Effect of Training Set Size
+
+Naive Bayes is famous for performing well with **small training sets**. Let's see how all four models behave as we vary the amount of training data.
+
+```{r learning-curves, fig.height=5, fig.width=9}
+set.seed(MASTER_SEED)
+
+train_fracs <- seq(0.1, 0.9, by = 0.1)
+n_reps_lc <- 30
+
+lc_results <- lapply(train_fracs, function(frac) {
+  accs <- replicate(n_reps_lc, {
+    idx <- sample(1:nrow(iris), floor(frac * nrow(iris)))
+    tr  <- iris[idx, ]
+    te  <- iris[-idx, ]
+
+    nb_m  <- naiveBayes(Species ~ ., data = tr)
+    dt_m  <- rpart(Species ~ ., data = tr, method = "class")
+    rf_m  <- randomForest(Species ~ ., data = tr, ntree = 100)
+    svm_m <- svm(Species ~ ., data = tr, kernel = "radial", cost = 5, gamma = 0.5)
+
+    c(
+      NB  = mean(predict(nb_m,  te) == te$Species),
+      DT  = mean(predict(dt_m,  te, type = "class") == te$Species),
+      RF  = mean(predict(rf_m,  te) == te$Species),
+      SVM = mean(predict(svm_m, te) == te$Species)
+    )
+  })
+
+  data.frame(
+    frac = frac,
+    Model = rep(c("Naive Bayes", "Decision Tree", "Random Forest", "SVM"), each = 1),
+    Accuracy = rowMeans(accs)
+  )
+}) %>% do.call(rbind, .)
+
+ggplot(lc_results, aes(x = frac, y = Accuracy, color = Model)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_x_continuous(labels = scales::percent, breaks = train_fracs) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_color_manual(values = c(
+    "Naive Bayes"   = "#4CAF50",
+    "Decision Tree" = "#FF9800",
+    "Random Forest" = "#9C27B0",
+    "SVM"           = "#2196F3"
+  )) +
+  labs(
+    title = "Learning Curves: Test Accuracy vs. Training Set Size",
+    subtitle = "Naive Bayes reaches good accuracy with very little data; complex models need more",
+    x = "Fraction of Data Used for Training",
+    y = "Mean Test Accuracy (30 repetitions)",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+> **Key observation:** With only 10-20% of the data, Naive Bayes often outperforms more complex models. As training data grows, Random Forest and SVM catch up and eventually surpass NB. This makes NB an excellent choice when data is scarce.
 
 ---
 
 # Knowledge Check
 
 <details>
-<summary>**Question 1:** In your own words, what is a *prior* and what is a *posterior*?</summary>
-**Answer:** The **prior** is what you believe *before* seeing new evidence (e.g., 20% of emails are spam). The **posterior** is what you believe *after* seeing evidence (e.g., given the word “Urgent”, spam might jump to 60%).
+<summary>**Question 1:** In your own words, explain the difference between the prior and the posterior in Bayes' Theorem.</summary>
+**Answer:** The **prior** $P(C)$ is your initial belief about how likely a class is *before* looking at any evidence — it's based purely on how common each class is in the training data. The **posterior** $P(C \mid X)$ is your *updated* belief after incorporating the feature values you observed. Bayes' Theorem is the mechanism that transforms the prior into the posterior by multiplying by the likelihood and normalising.
 </details>
 
 <br>
 
 <details>
-<summary>**Question 2:** Why is Naive Bayes called “naive”?</summary>
-**Answer:** Because it assumes the features are conditionally independent given the class. In real life, features can be correlated, but NB pretends they’re independent to make the math simple and fast.
+<summary>**Question 2:** Why is the classifier called "naive"? Give an example of when this assumption is clearly violated.</summary>
+**Answer:** It's called "naive" because it assumes every feature is **conditionally independent** of every other feature, given the class. In the Iris dataset, Petal.Length and Petal.Width have a correlation of 0.96 — knowing one strongly predicts the other, violating the independence assumption. In text classification, words like "New" and "York" are clearly dependent (they often appear together), but NB treats them as independent.
 </details>
 
 <br>
 
 <details>
-<summary>**Question 3:** What is the “zero-frequency problem” and how does Laplace smoothing fix it?</summary>
-**Answer:** If a feature value never appeared in a class during training, NB can assign probability 0, which makes the whole class likelihood 0. Laplace smoothing adds a small amount to counts so probabilities never become exactly zero.
+<summary>**Question 3:** What is the zero-frequency problem and how does Laplace smoothing fix it?</summary>
+**Answer:** If a feature value never appears with a particular class in the training data, its estimated probability is 0. Since NB multiplies all feature probabilities, this single zero wipes out the entire product, making the class impossible regardless of other evidence. Laplace smoothing adds a small count ($\alpha$, typically 1) to every feature-class combination, ensuring no probability is ever exactly zero. This allows rare but possible combinations to receive a small, non-zero probability.
 </details>
 
 <br>
 
 <details>
-<summary>**Question 4:** When would you prefer Gaussian NB vs Multinomial NB?</summary>
-**Answer:** **Gaussian NB** is for continuous numeric features (like lengths, temperatures). **Multinomial NB** is for counts (like word counts in documents).
+<summary>**Question 4:** When would you choose Gaussian NB over Multinomial NB?</summary>
+**Answer:** Use **Gaussian NB** when your features are continuous real-valued measurements (heights, temperatures, sensor readings) that are reasonably bell-shaped. Use **Multinomial NB** when your features represent counts or frequencies — most commonly word counts in text classification. If your features are binary (present/absent), use **Bernoulli NB**. The choice depends entirely on the nature of your data.
 </details>
+
+<br>
+
+<details>
+<summary>**Question 5:** Naive Bayes is known to be a "bad estimator but a good classifier." What does this mean?</summary>
+**Answer:** NB often produces **poorly calibrated probability estimates** — the predicted probabilities may be far from the true probabilities (too close to 0 or 1). However, it's still a good **classifier** because the *ranking* of classes by probability is usually correct. If the true class gets the highest posterior score, the prediction is correct even if the actual probability value is wrong. Classification only needs the right ordering, not the right magnitudes.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 6:** You have a dataset with 100,000 features (e.g., gene expression data) and only 50 samples. Which classifier would you try first and why?</summary>
+**Answer:** **Naive Bayes** is the ideal starting point. It estimates only 2 parameters per feature per class (mean and variance for Gaussian NB), for a total of ~200,000K parameters — far fewer than the data dimensions. Complex models like Random Forests or SVMs would either overfit or be extremely slow in this "wide" data regime. NB's simplicity (few parameters, no iterative training) makes it uniquely well-suited to high-dimensional, low-sample settings.
+</details>
+
+---
+
+# Summary
+
+```{r summary-table, echo=FALSE}
+summary_df <- data.frame(
+  Concept = c(
+    "Bayes' Theorem",
+    "Prior P(C)",
+    "Likelihood P(X|C)",
+    "Posterior P(C|X)",
+    "Naive Assumption",
+    "Gaussian NB",
+    "Multinomial NB",
+    "Bernoulli NB",
+    "Laplace Smoothing",
+    "Log-Probabilities",
+    "Model Comparison"
+  ),
+  `Key Idea` = c(
+    "Update your beliefs as new evidence arrives: posterior ∝ likelihood × prior",
+    "How common is each class before seeing any features? (Class frequencies in training data)",
+    "How likely are these feature values if the class is C? (The bell curve evaluation)",
+    "The final, updated probability of each class given the observed features",
+    "Assume all features are independent given the class → simplifies joint probability to a product",
+    "Continuous features follow a normal distribution within each class → estimate mean and SD",
+    "Features are word counts or frequencies → used for text classification",
+    "Features are binary (present/absent) → explicitly models absence",
+    "Add α (usually 1) to all counts to prevent zero probabilities from killing the product",
+    "Use log(P) instead of P to avoid numerical underflow when multiplying many small numbers",
+    "NB creates smooth elliptical boundaries; fastest to train; best with small data or high dimensions"
+  ),
+  `R Implementation` = c(
+    "Manual or naiveBayes()",
+    "Computed automatically from training data",
+    "Estimated from per-class feature statistics",
+    "predict(nb_model, newdata, type = 'raw')",
+    "Built into naiveBayes() — no option needed",
+    "naiveBayes() with continuous features (automatic)",
+    "quanteda or tm packages for text data",
+    "Custom implementation (binary features)",
+    "naiveBayes(..., laplace = 1)",
+    "Used internally; manual demo with log()",
+    "Compare with rpart(), randomForest(), svm()"
+  )
+)
+
+knitr::kable(summary_df,
+  col.names = c("Concept", "Key Idea", "R Implementation"),
+  caption = "Week 06 Summary: Naive Bayes Classifiers")
+```
+
+**The Big Picture:** Naive Bayes takes a fundamentally different approach from all the classifiers we've seen so far. Instead of building trees, drawing boundaries, or finding margins, it simply asks: *"Which class makes the observed data most probable?"* The naive independence assumption makes this question tractable — instead of estimating a complex joint distribution, we estimate simple per-feature distributions and multiply them together. The result is the simplest, fastest, and most probabilistically principled classifier in our toolbox. It won't win every competition, but as a fast baseline that works surprisingly well — especially with small data, high dimensions, or text — Naive Bayes earns its place alongside Decision Trees, Random Forests, and SVMs.
 
 ---
 
 # References
 
-[1] Lecture 07 course material: `ANLY530-Machine-Learning/Week06/Lecture07-NB.pdf`
+[1] scikit-learn developers, "1.9. Naive Bayes," *scikit-learn 1.8.0 documentation*, 2026. [Online]. Available: https://scikit-learn.org/stable/modules/naive_bayes.html
 
-[2] Wikipedia contributors, “Naive Bayes classifier,” *Wikipedia, The Free Encyclopedia*, 2026. Available: `https://en.wikipedia.org/wiki/Naive_Bayes_classifier`
+[2] Wikipedia contributors, "Naive Bayes classifier," *Wikipedia, The Free Encyclopedia*, 2026. [Online]. Available: https://en.wikipedia.org/wiki/Naive_Bayes_classifier
 
-[3] scikit-learn developers, “Naive Bayes,” *scikit-learn User Guide*, 2026. Available: `https://scikit-learn.org/stable/modules/naive_bayes.html`
+[3] A. Géron, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*, 2nd ed. Sebastopol, CA: O'Reilly Media, 2019, ch. 3.
 
+[4] B. C. Boehmke and B. M. Greenwell, *Hands-On Machine Learning with R*. Boca Raton, FL: CRC Press, 2020, ch. 15. [Online]. Available: https://bradleyboehmke.github.io/HOML/
+
+[5] D. Barber, *Bayesian Reasoning and Machine Learning*. Cambridge University Press, 2012, ch. 10.
+
+[6] H. Zhang, "The Optimality of Naive Bayes," *Proc. FLAIRS Conference*, 2004. [Online]. Available: https://www.cs.unb.ca/~hzhang/publications/FLAIRS04ZhangH.pdf
+
+[7] D. Meyer, E. Dimitriadou, K. Hornik, A. Weingessel, and F. Leisch, "e1071: Misc Functions of the Department of Statistics, Probability Theory Group," R package, 2023. [Online]. Available: https://CRAN.R-project.org/package=e1071
+
+[8] Z. Huang, "seedhash: Deterministic Seed Generation from String Inputs Using MD5 Hashing," R package, 2026. [Online]. Available: https://github.com/melhzy/seedhash
