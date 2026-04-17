@@ -12,12 +12,6 @@ Foundational machine learning concepts, algorithms, and applications. Covers sup
 - [View Course Materials](./ANLY530-Machine-Learning/)
 - [Live Tutorials](https://melhzy.github.io/data_sciences/#530)
 
-### GRAD695 - Research Methodology & Writing
-Research methodology and scientific writing for analytics. Prepares students for analytics research through IEEE Access-format proposal development, research design fundamentals, and ethical research practices.
-
-- [View Course Materials](./GRAD695-Research-Methdology&Writing/)
-- [Live Tutorials](https://melhzy.github.io/data_sciences/#695)
-
 
 ## Repository Structure
 
