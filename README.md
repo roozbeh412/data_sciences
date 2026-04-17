@@ -10,7 +10,7 @@ This repository contains teaching materials, tutorials, and applied projects for
 Foundational machine learning concepts, algorithms, and applications. Covers supervised and unsupervised learning, model evaluation, and practical implementation.
 
 - [View Course Materials](./ANLY530-Machine-Learning/)
-- [Live Tutorials](https://melhzy.github.io/data_sciences/#530)
+- [Live Tutorials](https://roozbeh412.github.io/data_sciences/#530)
 
 
 ## Repository Structure
