@@ -1,0 +1,1301 @@
+---
+title: "Week 07: Unsupervised Learning — K-Means & Hierarchical Clustering"
+author: "Ziyuan Huang"
+date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  fig.width = 8,
+  fig.height = 6
+)
+
+if (!requireNamespace("seedhash", quietly = TRUE)) {
+  if (!requireNamespace("pak", quietly = TRUE)) {
+    install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
+  }
+  pak::pkg_install("github::melhzy/seedhash/R", ask = FALSE)
+}
+```
+
+```{r seeds, include=TRUE}
+library(seedhash)
+gen <- SeedHashGenerator$new("ANLY530-Week07-UnsupervisedLearning")
+MASTER_SEED <- gen$generate_seeds(1)
+set.seed(MASTER_SEED)
+```
+
+```{r seedhash-info, echo=FALSE, results='asis'}
+cat(paste0(
+  "> **Reproducibility note:** This tutorial uses the ",
+  "[seedhash](https://github.com/melhzy/seedhash) package to produce ",
+  "deterministic, machine-independent random seeds. The master seed for this ",
+  "document is **", MASTER_SEED, "**, derived from the key ",
+  "`ANLY530-Week07-UnsupervisedLearning`."
+))
+```
+
+```{r load-packages}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  tidyverse,
+  gridExtra,
+  scales,
+  cluster,
+  factoextra,
+  dendextend,
+  dbscan,
+  GGally,
+  knitr,
+  kableExtra
+)
+```
+
+---
+
+# Introduction
+
+In Weeks 02--06 we explored **supervised learning**: every training example came with a label (a species name, a class, a numeric target) and the model learned to predict that label for new data. But what happens when you have a pile of data and **no labels at all**?
+
+> "Unsupervised learning algorithms learn patterns exclusively from unlabeled data." — Wikipedia [1]
+
+**Unsupervised learning** is the branch of machine learning that discovers hidden structure in data without being told what to look for. Think of it this way:
+
+- **Supervised learning** is like studying for an exam with an answer key — you know what the right answers are.
+- **Unsupervised learning** is like sorting a drawer full of random items — nobody tells you the categories; you figure them out yourself.
+
+This week we focus on the two most important clustering techniques:
+
+1. **K-Means Clustering** — partition data into K groups by minimizing the distance from each point to its group centre.
+2. **Hierarchical Clustering** — build a tree (called a *dendrogram*) that shows how observations merge into progressively larger groups.
+
+We will also take a brief look at **DBSCAN**, a density-based method that handles oddly shaped clusters.
+
+### Learning Objectives
+
+By the end of this tutorial you will be able to:
+
+1. Explain the difference between supervised and unsupervised learning.
+2. Describe the K-Means algorithm step by step.
+3. Use the **Elbow Method** and **Silhouette Analysis** to choose K.
+4. Recognise when K-Means fails and explain why.
+5. Build and interpret a **dendrogram** from hierarchical clustering.
+6. Compare **linkage methods** (single, complete, average, Ward).
+7. Apply both K-Means and hierarchical clustering to the Iris dataset and evaluate how well the discovered clusters match the true species.
+8. Decide when to use K-Means vs. hierarchical clustering vs. DBSCAN.
+
+### Required Packages
+
+| Package | Purpose |
+|---|---|
+| `tidyverse` | Data manipulation and `ggplot2` |
+| `gridExtra` | Multi-panel figure layouts |
+| `scales` | Axis formatting |
+| `cluster` | `silhouette()` and `pam()` |
+| `factoextra` | Cluster visualisation helpers |
+| `dendextend` | Enhanced dendrogram styling |
+| `dbscan` | DBSCAN algorithm |
+| `GGally` | Pairs plots (`ggpairs`) |
+| `knitr` / `kableExtra` | Formatted tables |
+
+---
+
+# Part 1 — Supervised vs. Unsupervised Learning
+
+Before diving into algorithms, let us visualise the fundamental difference.
+
+```{r part1-data}
+set.seed(MASTER_SEED)
+sup_data <- data.frame(
+  x = c(rnorm(50, 2, 0.8), rnorm(50, 5, 0.8), rnorm(50, 8, 0.8)),
+  y = c(rnorm(50, 3, 0.8), rnorm(50, 7, 0.8), rnorm(50, 3, 0.8)),
+  label = rep(c("A", "B", "C"), each = 50)
+)
+```
+
+```{r part1-viz, fig.width=12, fig.height=5}
+p_sup <- ggplot(sup_data, aes(x, y, colour = label)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "Supervised: Labels Are Known",
+       x = "Feature 1", y = "Feature 2", colour = "Class") +
+  theme_minimal(base_size = 13)
+
+p_unsup <- ggplot(sup_data, aes(x, y)) +
+  geom_point(size = 2.5, alpha = 0.6, colour = "grey40") +
+  labs(title = "Unsupervised: No Labels",
+       x = "Feature 1", y = "Feature 2") +
+  theme_minimal(base_size = 13)
+
+grid.arrange(p_sup, p_unsup, ncol = 2)
+```
+
+On the left, each point already has a class label — the model learns a mapping from features to labels. On the right, the same data appear without any colour coding. An unsupervised algorithm must figure out that there are three natural groups just from the spatial arrangement of the points.
+
+### Types of Unsupervised Tasks
+
+| Task | Goal | Example Algorithms |
+|---|---|---|
+| **Clustering** | Group similar observations | K-Means, Hierarchical, DBSCAN |
+| **Dimensionality Reduction** | Compress features while preserving structure | PCA, t-SNE, UMAP |
+| **Anomaly Detection** | Identify unusual observations | Isolation Forest, LOF |
+
+This week we concentrate on **clustering**.
+
+### How Clustering Works — A Visual Overview
+
+Before we dive into specific algorithms, here is the high-level idea: a clustering algorithm looks at the distances between data points and groups together the ones that are close to each other.
+
+```{r clustering-idea, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 99)
+idea_data <- data.frame(
+  x = c(rnorm(40, 2, 0.6), rnorm(40, 6, 0.6)),
+  y = c(rnorm(40, 5, 0.6), rnorm(40, 3, 0.6))
+)
+
+km_idea <- kmeans(idea_data, centers = 2, nstart = 25)
+idea_data$cluster <- factor(km_idea$cluster)
+idea_cents <- as.data.frame(km_idea$centers)
+idea_cents$cluster <- factor(1:2)
+
+p_before <- ggplot(idea_data, aes(x, y)) +
+  geom_point(size = 2.5, colour = "grey50", alpha = 0.7) +
+  labs(title = "Step 1: Raw Data — No Groups Known",
+       x = "Feature 1", y = "Feature 2") +
+  theme_minimal(base_size = 13)
+
+p_after <- ggplot(idea_data, aes(x, y, colour = cluster)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  geom_point(data = idea_cents, aes(x, y), shape = 18, size = 7, colour = "black") +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "Step 2: Clustering Discovers Groups",
+       x = "Feature 1", y = "Feature 2") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+
+grid.arrange(p_before, p_after, ncol = 2)
+```
+
+The left panel shows unlabelled data; the right panel shows the result after a clustering algorithm assigns each point to a group and identifies group centres (black diamonds).
+
+---
+
+# Part 2 — K-Means Clustering
+
+## The Big Idea
+
+Imagine you run a pizza delivery company and need to place **K** delivery centres so that the total driving distance for all customers is as small as possible. K-Means does exactly this: it finds K **centroids** (centres) and assigns every data point to the nearest centroid, then moves each centroid to the average position of its assigned points, and repeats.
+
+## The Algorithm Step by Step
+
+1. **Pick K** — decide how many clusters you want.
+2. **Initialise** — randomly place K centroids in the feature space.
+3. **Assign** — label every point with the index of its nearest centroid.
+4. **Update** — move each centroid to the mean of its assigned points.
+5. **Repeat** steps 3--4 until assignments stop changing (or a maximum number of iterations is reached).
+
+### Visualising K-Means Iterations
+
+We generate three clusters in 2D and watch the centroids converge over six iterations.
+
+```{r kmeans-step-data}
+set.seed(MASTER_SEED + 1)
+blob1 <- data.frame(x = rnorm(60, 2, 0.9), y = rnorm(60, 2, 0.9))
+blob2 <- data.frame(x = rnorm(60, 7, 0.9), y = rnorm(60, 3, 0.9))
+blob3 <- data.frame(x = rnorm(60, 4.5, 0.9), y = rnorm(60, 7, 0.9))
+blobs <- rbind(blob1, blob2, blob3)
+
+K <- 3
+set.seed(MASTER_SEED + 2)
+init_idx <- sample(nrow(blobs), K)
+centroids <- blobs[init_idx, ]
+
+iterations <- list()
+for (iter in 1:6) {
+  dists <- as.matrix(dist(rbind(centroids, blobs)))[1:K, (K + 1):(K + nrow(blobs))]
+  assignments <- apply(dists, 2, which.min)
+  iter_df <- blobs
+  iter_df$cluster <- factor(assignments)
+  cent_df <- data.frame(
+    x = tapply(blobs$x, assignments, mean),
+    y = tapply(blobs$y, assignments, mean),
+    cluster = factor(1:K)
+  )
+  iterations[[iter]] <- list(points = iter_df, centroids = cent_df)
+  centroids <- cent_df[, c("x", "y")]
+}
+```
+
+```{r kmeans-step-viz, fig.width=14, fig.height=9}
+plots <- lapply(1:6, function(i) {
+  ggplot(iterations[[i]]$points, aes(x, y, colour = cluster)) +
+    geom_point(size = 1.8, alpha = 0.7) +
+    geom_point(data = iterations[[i]]$centroids, aes(x, y),
+               shape = 18, size = 6, colour = "black") +
+    scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+    labs(title = paste("Iteration", i)) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none")
+})
+grid.arrange(grobs = plots, ncol = 3)
+```
+
+The black diamonds are the centroids. Notice how they "walk" toward the centres of their clusters and stabilise within a few iterations.
+
+## The Objective Function — WCSS
+
+K-Means tries to minimise the **Within-Cluster Sum of Squares (WCSS)**, also called **inertia**:
+
+$$
+\text{WCSS} = \sum_{i=1}^{K} \sum_{\mathbf{x} \in C_i} \|\mathbf{x} - \boldsymbol{\mu}_i\|^2
+$$
+
+In plain English: for each cluster, measure how far every point is from the centroid, square those distances, and add them all up. A smaller WCSS means tighter, more compact clusters.
+
+```{r kmeans-wcss-viz, fig.width=8, fig.height=5}
+km_final <- kmeans(blobs, centers = 3, nstart = 25)
+blobs$cluster <- factor(km_final$cluster)
+cent_final <- as.data.frame(km_final$centers)
+cent_final$cluster <- factor(1:3)
+
+ggplot(blobs, aes(x, y, colour = cluster)) +
+  geom_point(size = 2, alpha = 0.6) +
+  geom_point(data = cent_final, aes(x, y), shape = 18, size = 7, colour = "black") +
+  geom_segment(data = blobs %>% mutate(cx = cent_final$x[as.numeric(cluster)],
+                                        cy = cent_final$y[as.numeric(cluster)]),
+               aes(xend = cx, yend = cy), alpha = 0.1, colour = "grey50") +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "K-Means Result with Lines to Centroids",
+       subtitle = paste("Total WCSS =", round(km_final$tot.withinss, 1)),
+       x = "Feature 1", y = "Feature 2") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+Each thin grey line connects a point to its centroid. The WCSS is the sum of the squared lengths of all these lines.
+
+### Voronoi Decision Regions
+
+Each point belongs to whichever centroid is closest. This partitions the entire plane into regions called **Voronoi cells** — straight-edged territories around each centroid.
+
+```{r voronoi-viz, fig.width=8, fig.height=6}
+x_range <- seq(min(blobs$x) - 1, max(blobs$x) + 1, length.out = 200)
+y_range <- seq(min(blobs$y) - 1, max(blobs$y) + 1, length.out = 200)
+grid_pts <- expand.grid(x = x_range, y = y_range)
+
+grid_dists <- as.matrix(dist(rbind(cent_final[, 1:2], grid_pts)))[1:3, 4:nrow(rbind(cent_final[, 1:2], grid_pts))]
+grid_pts$cluster <- factor(apply(grid_dists, 2, which.min))
+
+ggplot() +
+  geom_tile(data = grid_pts, aes(x, y, fill = cluster), alpha = 0.15) +
+  geom_point(data = blobs, aes(x, y, colour = cluster), size = 2, alpha = 0.7) +
+  geom_point(data = cent_final, aes(x, y), shape = 18, size = 7, colour = "black") +
+  scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "Voronoi Decision Regions",
+       subtitle = "Every point in the plane is assigned to its nearest centroid",
+       x = "Feature 1", y = "Feature 2") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+The shaded background shows which centroid "owns" each part of the space. The boundaries are always straight lines (or planes in higher dimensions) — this is why K-Means struggles with non-linear cluster shapes.
+
+---
+
+# Part 3 — Choosing K
+
+K-Means requires you to specify K in advance. Picking the wrong K leads to poor clustering. Two popular methods help:
+
+## 3.1 The Elbow Method
+
+Run K-Means for K = 1, 2, 3, ..., 10 and plot the WCSS at each K. Look for an **"elbow"** — the point where adding another cluster stops giving a big reduction in WCSS.
+
+```{r elbow-plot, fig.width=8, fig.height=5}
+set.seed(MASTER_SEED + 3)
+wcss_values <- sapply(1:10, function(k) {
+  km <- kmeans(blobs[, 1:2], centers = k, nstart = 25)
+  km$tot.withinss
+})
+
+elbow_df <- data.frame(K = 1:10, WCSS = wcss_values)
+
+ggplot(elbow_df, aes(K, WCSS)) +
+  geom_line(colour = "#1976D2", linewidth = 1.2) +
+  geom_point(size = 3, colour = "#1976D2") +
+  geom_vline(xintercept = 3, linetype = "dashed", colour = "#E53935", linewidth = 0.8) +
+  annotate("text", x = 3.4, y = max(wcss_values) * 0.6,
+           label = "Elbow at K = 3", colour = "#E53935", size = 5, hjust = 0) +
+  scale_x_continuous(breaks = 1:10) +
+  labs(title = "Elbow Method — WCSS vs. Number of Clusters",
+       x = "Number of Clusters (K)", y = "Within-Cluster Sum of Squares") +
+  theme_minimal(base_size = 13)
+```
+
+The curve bends sharply at K = 3, confirming that three clusters is the right choice for this data.
+
+## 3.2 Silhouette Analysis
+
+The **silhouette score** measures how similar each point is to its own cluster compared to the nearest neighbouring cluster:
+
+$$
+s(i) = \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}}
+$$
+
+- $a(i)$ = average distance from point $i$ to all other points **in the same cluster** (how tight is my cluster?).
+- $b(i)$ = average distance from point $i$ to all points **in the nearest other cluster** (how far away is the next-best cluster?).
+
+A silhouette score near **+1** means the point is well matched to its own cluster. Near **0** means it is on the border. Near **-1** means it was probably assigned to the wrong cluster.
+
+```{r silhouette-multi, fig.width=14, fig.height=5}
+sil_plots <- lapply(2:4, function(k) {
+  set.seed(MASTER_SEED + 4)
+  km <- kmeans(blobs[, 1:2], centers = k, nstart = 25)
+  sil <- silhouette(km$cluster, dist(blobs[, 1:2]))
+  avg_sil <- round(mean(sil[, 3]), 3)
+  
+  sil_df <- data.frame(
+    index = 1:nrow(sil),
+    cluster = factor(sil[, 1]),
+    width = sil[, 3]
+  ) %>% arrange(cluster, desc(width)) %>% mutate(order = row_number())
+  
+  ggplot(sil_df, aes(x = order, y = width, fill = cluster)) +
+    geom_bar(stat = "identity", width = 1) +
+    geom_hline(yintercept = avg_sil, linetype = "dashed", colour = "black") +
+    scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50", "#FF9800")) +
+    coord_flip() +
+    labs(title = paste0("K = ", k, " (avg = ", avg_sil, ")"),
+         x = "", y = "Silhouette Width") +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none", axis.text.y = element_blank())
+})
+
+grid.arrange(grobs = sil_plots, ncol = 3)
+```
+
+At K = 3 all silhouette bars are tall and positive, confirming a clean separation. At K = 2, some bars are short. At K = 4, one cluster is artificially split and the average drops.
+
+```{r avg-sil-plot, fig.width=8, fig.height=5}
+avg_sils <- sapply(2:10, function(k) {
+  set.seed(MASTER_SEED + 5)
+  km <- kmeans(blobs[, 1:2], centers = k, nstart = 25)
+  sil <- silhouette(km$cluster, dist(blobs[, 1:2]))
+  mean(sil[, 3])
+})
+
+sil_summary <- data.frame(K = 2:10, AvgSilhouette = avg_sils)
+
+ggplot(sil_summary, aes(K, AvgSilhouette)) +
+  geom_line(colour = "#4CAF50", linewidth = 1.2) +
+  geom_point(size = 3, colour = "#4CAF50") +
+  geom_vline(xintercept = 3, linetype = "dashed", colour = "#E53935") +
+  annotate("text", x = 3.4, y = max(avg_sils) - 0.02,
+           label = "Best at K = 3", colour = "#E53935", size = 5, hjust = 0) +
+  scale_x_continuous(breaks = 2:10) +
+  labs(title = "Average Silhouette Width vs. K",
+       x = "Number of Clusters (K)", y = "Average Silhouette Width") +
+  theme_minimal(base_size = 13)
+```
+
+The peak at K = 3 agrees with the elbow method.
+
+## 3.3 Elbow + Silhouette Side by Side
+
+In practice you should look at both metrics together:
+
+```{r elbow-sil-combined, fig.width=12, fig.height=5}
+p_elbow <- ggplot(elbow_df, aes(K, WCSS)) +
+  geom_line(colour = "#1976D2", linewidth = 1.2) +
+  geom_point(size = 3, colour = "#1976D2") +
+  geom_vline(xintercept = 3, linetype = "dashed", colour = "#E53935") +
+  scale_x_continuous(breaks = 1:10) +
+  labs(title = "Elbow Method", x = "K", y = "WCSS") +
+  theme_minimal(base_size = 12)
+
+p_sil_summary <- ggplot(sil_summary, aes(K, AvgSilhouette)) +
+  geom_line(colour = "#4CAF50", linewidth = 1.2) +
+  geom_point(size = 3, colour = "#4CAF50") +
+  geom_vline(xintercept = 3, linetype = "dashed", colour = "#E53935") +
+  scale_x_continuous(breaks = 2:10) +
+  labs(title = "Silhouette Analysis", x = "K", y = "Avg Silhouette Width") +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p_elbow, p_sil_summary, ncol = 2)
+```
+
+When both methods point to the same K, you can be confident in your choice. If they disagree, favour the silhouette score — it directly measures cluster quality rather than just compactness.
+
+## 3.4 Gap Statistic (Brief Mention)
+
+The **Gap Statistic** compares the WCSS of your clustering to the WCSS expected under a **null reference distribution** (randomly scattered data with no clusters). The optimal K is where the gap between the real WCSS and the null WCSS is largest.
+
+$$
+\text{Gap}(K) = E[\log(WCSS_{\text{null}})] - \log(WCSS_{\text{data}})
+$$
+
+In R you can compute it with `cluster::clusGap()`. We will not dive deeper here, but know that it is a more formal alternative to the elbow method.
+
+---
+
+# Part 4 — K-Means Pitfalls
+
+K-Means is fast and intuitive, but it has several failure modes you must watch out for.
+
+## 4.1 Sensitivity to Initialisation
+
+Because centroids start at random positions, different runs can produce different results.
+
+```{r init-sensitivity, fig.width=14, fig.height=5}
+init_plots <- lapply(1:4, function(s) {
+  set.seed(MASTER_SEED + 10 + s)
+  km <- kmeans(blobs[, 1:2], centers = 3, nstart = 1)
+  df <- blobs[, 1:2]
+  df$cluster <- factor(km$cluster)
+  ggplot(df, aes(x, y, colour = cluster)) +
+    geom_point(size = 1.8, alpha = 0.7) +
+    scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+    labs(title = paste("Run", s, " WCSS =", round(km$tot.withinss, 1))) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none")
+})
+grid.arrange(grobs = init_plots, ncol = 4)
+```
+
+Some runs find the true clusters while others get stuck in poor configurations. The fix is to set `nstart = 25` (or higher), which runs the algorithm 25 times with different starting centroids and keeps the best result.
+
+**K-Means++** is a smarter initialisation strategy that spreads the initial centroids far apart. R's `kmeans()` uses a variant of this when you set `algorithm = "Hartigan-Wong"`.
+
+## 4.2 Cluster Shape Assumptions
+
+K-Means assumes clusters are roughly **spherical** (round blobs). It fails badly on non-spherical shapes.
+
+```{r non-spherical, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 20)
+theta <- seq(0, pi, length.out = 150)
+moon1 <- data.frame(x = cos(theta) + rnorm(150, 0, 0.08),
+                     y = sin(theta) + rnorm(150, 0, 0.08))
+moon2 <- data.frame(x = 1 - cos(theta) + rnorm(150, 0, 0.08),
+                     y = 1 - sin(theta) - 0.5 + rnorm(150, 0, 0.08))
+moons <- rbind(moon1, moon2)
+moons$true_label <- rep(c("Moon A", "Moon B"), each = 150)
+
+km_moons <- kmeans(moons[, 1:2], centers = 2, nstart = 25)
+moons$kmeans_cluster <- factor(km_moons$cluster)
+
+p_true_moons <- ggplot(moons, aes(x, y, colour = true_label)) +
+  geom_point(size = 1.8) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "True Shape: Two Moons", colour = "Group") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+
+p_km_moons <- ggplot(moons, aes(x, y, colour = kmeans_cluster)) +
+  geom_point(size = 1.8) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "K-Means (K=2): Wrong Split", colour = "Cluster") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+
+grid.arrange(p_true_moons, p_km_moons, ncol = 2)
+```
+
+K-Means slices the moons with a straight line through the middle instead of tracing their curved shape. We will see later that DBSCAN handles this correctly.
+
+## 4.3 Feature Scaling
+
+If one feature is measured in thousands (e.g., income) and another in single digits (e.g., age), K-Means will be dominated by the large-scale feature. Always **standardise** your features first.
+
+```{r scaling-demo, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 30)
+unscaled <- data.frame(
+  income = c(rnorm(60, 30000, 5000), rnorm(60, 80000, 5000)),
+  age = c(rnorm(60, 25, 3), rnorm(60, 55, 3))
+)
+true_group <- rep(c("Young/Low", "Old/High"), each = 60)
+
+km_unscaled <- kmeans(unscaled, centers = 2, nstart = 25)
+unscaled$cluster <- factor(km_unscaled$cluster)
+
+scaled_data <- scale(unscaled[, 1:2])
+km_scaled <- kmeans(scaled_data, centers = 2, nstart = 25)
+unscaled$cluster_scaled <- factor(km_scaled$cluster)
+
+p_unscaled <- ggplot(unscaled, aes(income, age, colour = cluster)) +
+  geom_point(size = 2, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "Without Scaling", x = "Income", y = "Age") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+p_scaled <- ggplot(unscaled, aes(income, age, colour = cluster_scaled)) +
+  geom_point(size = 2, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "With Scaling", x = "Income", y = "Age") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+grid.arrange(p_unscaled, p_scaled, ncol = 2)
+```
+
+Without scaling, clusters are based almost entirely on income (the axis with the larger spread). After scaling, both features contribute equally.
+
+## 4.4 Unequal Cluster Sizes
+
+K-Means also struggles when clusters have very different numbers of points or very different variances.
+
+```{r unequal-clusters, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 35)
+unequal <- rbind(
+  data.frame(x = rnorm(200, 0, 0.5), y = rnorm(200, 0, 0.5)),
+  data.frame(x = rnorm(30, 4, 1.8),  y = rnorm(30, 4, 1.8))
+)
+true_unequal <- c(rep("Dense (n=200)", 200), rep("Sparse (n=30)", 30))
+
+km_uneq <- kmeans(unequal, centers = 2, nstart = 25)
+unequal$cluster <- factor(km_uneq$cluster)
+unequal$true <- true_unequal
+
+p_true_uneq <- ggplot(unequal, aes(x, y, colour = true)) +
+  geom_point(size = 1.8, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "True Groups (Different Sizes)", colour = "Group") +
+  theme_minimal(base_size = 12) + theme(legend.position = "bottom")
+
+p_km_uneq <- ggplot(unequal, aes(x, y, colour = cluster)) +
+  geom_point(size = 1.8, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "K-Means (K=2)", colour = "Cluster") +
+  theme_minimal(base_size = 12) + theme(legend.position = "bottom")
+
+grid.arrange(p_true_uneq, p_km_uneq, ncol = 2)
+```
+
+K-Means tends to equalise cluster sizes and may "steal" points from the large dense cluster to give to the small sparse one, since doing so can lower overall WCSS.
+
+---
+
+# Part 5 — Hierarchical Clustering
+
+## The Big Idea
+
+Instead of deciding K up front, hierarchical clustering builds an entire **family tree** (called a **dendrogram**) that shows how individual observations gradually merge into bigger and bigger groups.
+
+> "Hierarchical clustering seeks to build a hierarchy of clusters." — Wikipedia [4]
+
+### Agglomerative (Bottom-Up) Algorithm
+
+1. Start with every point as its own cluster (N clusters for N points).
+2. Compute the distance between every pair of clusters.
+3. Merge the two closest clusters into one.
+4. Repeat steps 2--3 until only one cluster remains.
+
+The question is: how do we measure the distance between two *clusters* (not just two points)? The answer is the **linkage method**.
+
+## Linkage Methods
+
+| Linkage | Distance Between Clusters A and B | Analogy |
+|---|---|---|
+| **Single** | Distance between the **closest** pair of points | Two countries' closest border towns |
+| **Complete** | Distance between the **farthest** pair of points | Two countries' most distant cities |
+| **Average** | **Mean** of all pairwise distances | Average commute between all city pairs |
+| **Ward** | Increase in **total variance** when merging | Which merger causes the least internal disruption |
+
+### Visualising Agglomerative Merges
+
+To build intuition, let us watch the first few merges on a small dataset.
+
+```{r hc-small-steps, fig.width=14, fig.height=5}
+set.seed(MASTER_SEED + 38)
+small_pts <- data.frame(
+  x = c(1, 1.3, 3, 3.2, 5.5, 5.8, 5.6),
+  y = c(1, 1.5, 4, 3.5, 1.2, 1.5, 2.0),
+  label = paste("P", 1:7)
+)
+
+d_small <- dist(small_pts[, 1:2])
+hc_small <- hclust(d_small, method = "complete")
+
+step_k <- c(7, 5, 3)
+step_labels <- c("Start: 7 Clusters", "After 2 Merges: 5 Clusters", "After 4 Merges: 3 Clusters")
+
+step_plots <- lapply(seq_along(step_k), function(i) {
+  cl <- cutree(hc_small, k = step_k[i])
+  df <- small_pts
+  df$cluster <- factor(cl)
+  ggplot(df, aes(x, y, colour = cluster)) +
+    geom_point(size = 5) +
+    geom_text(aes(label = label), vjust = -1.2, size = 3.5, colour = "grey30") +
+    scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50", "#FF9800",
+                                    "#9C27B0", "#795548", "#607D8B")) +
+    labs(title = step_labels[i]) +
+    xlim(0, 7) + ylim(0, 5.5) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none")
+})
+grid.arrange(grobs = step_plots, ncol = 3)
+```
+
+The algorithm starts with every point as its own cluster, then progressively merges the two closest until the desired number of groups remains.
+
+```{r linkage-comparison, fig.width=14, fig.height=10}
+set.seed(MASTER_SEED + 40)
+hc_data <- rbind(
+  data.frame(x = rnorm(40, 2, 0.7), y = rnorm(40, 2, 0.7)),
+  data.frame(x = rnorm(40, 6, 0.7), y = rnorm(40, 6, 0.7)),
+  data.frame(x = rnorm(40, 6, 0.7), y = rnorm(40, 2, 0.7))
+)
+d <- dist(hc_data)
+
+linkage_methods <- c("single", "complete", "average", "ward.D2")
+linkage_labels <- c("Single Linkage", "Complete Linkage", "Average Linkage", "Ward Linkage")
+
+dend_plots <- lapply(seq_along(linkage_methods), function(i) {
+  hc <- hclust(d, method = linkage_methods[i])
+  dend <- as.dendrogram(hc)
+  dend <- color_branches(dend, k = 3, col = c("#1976D2", "#E53935", "#4CAF50"))
+  par(mar = c(2, 3, 3, 1))
+  plot(dend, main = linkage_labels[i], leaflab = "none", cex.main = 1.3)
+})
+```
+
+```{r linkage-scatter, fig.width=14, fig.height=5}
+scatter_plots <- lapply(seq_along(linkage_methods), function(i) {
+  hc <- hclust(d, method = linkage_methods[i])
+  clusters <- cutree(hc, k = 3)
+  df <- hc_data
+  df$cluster <- factor(clusters)
+  ggplot(df, aes(x, y, colour = cluster)) +
+    geom_point(size = 2, alpha = 0.7) +
+    scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+    labs(title = linkage_labels[i]) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none")
+})
+grid.arrange(grobs = scatter_plots, ncol = 4)
+```
+
+Notice how **single linkage** can create "chain" effects (long, stringy clusters), while **Ward** tends to produce compact, spherical clusters — similar to K-Means.
+
+### Single Linkage Chaining Effect
+
+Single linkage is especially prone to the "chaining" problem: if a few stray points bridge two clusters, it will merge them into one long chain.
+
+```{r chaining-demo, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 45)
+chain_data <- rbind(
+  data.frame(x = rnorm(40, 1, 0.4), y = rnorm(40, 1, 0.4)),
+  data.frame(x = rnorm(40, 5, 0.4), y = rnorm(40, 5, 0.4)),
+  data.frame(x = seq(1.8, 4.2, length.out = 6),
+             y = seq(1.8, 4.2, length.out = 6) + rnorm(6, 0, 0.15))
+)
+d_chain <- dist(chain_data)
+
+hc_single_chain <- cutree(hclust(d_chain, method = "single"), k = 2)
+hc_ward_chain <- cutree(hclust(d_chain, method = "ward.D2"), k = 2)
+
+chain_data$single <- factor(hc_single_chain)
+chain_data$ward <- factor(hc_ward_chain)
+
+p_chain_s <- ggplot(chain_data, aes(x, y, colour = single)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "Single Linkage — Chaining Merges Both") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+p_chain_w <- ggplot(chain_data, aes(x, y, colour = ward)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "Ward Linkage — Separates Correctly") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+grid.arrange(p_chain_s, p_chain_w, ncol = 2)
+```
+
+The bridging points cause single linkage to merge the two genuine clusters. Ward linkage resists this because it penalises merges that increase total variance too much.
+
+---
+
+# Part 6 — Cutting the Dendrogram
+
+A dendrogram is a complete hierarchical view. To get actual cluster assignments, you **cut** the tree at a chosen height — like drawing a horizontal line across the dendrogram. Every branch the line crosses becomes a separate cluster.
+
+```{r cut-dendrogram, fig.width=10, fig.height=6}
+hc_ward <- hclust(d, method = "ward.D2")
+dend_ward <- as.dendrogram(hc_ward)
+dend_ward <- color_branches(dend_ward, k = 3, col = c("#1976D2", "#E53935", "#4CAF50"))
+
+par(mar = c(2, 4, 3, 1))
+plot(dend_ward, main = "Ward Dendrogram — Cut at 3 Clusters", leaflab = "none",
+     cex.main = 1.4)
+abline(h = 13, col = "#E53935", lwd = 2, lty = 2)
+text(nrow(hc_data) * 0.85, 14, "Cut height", col = "#E53935", cex = 1.2)
+```
+
+```{r cut-scatter, fig.width=12, fig.height=5}
+hc_data$hc_cluster <- factor(cutree(hc_ward, k = 3))
+
+set.seed(MASTER_SEED + 41)
+km_hc_data <- kmeans(hc_data[, 1:2], centers = 3, nstart = 25)
+hc_data$km_cluster <- factor(km_hc_data$cluster)
+
+p_hc <- ggplot(hc_data, aes(x, y, colour = hc_cluster)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "Hierarchical Clustering (Ward, K=3)", colour = "Cluster") +
+  theme_minimal(base_size = 13) + theme(legend.position = "none")
+
+p_km <- ggplot(hc_data, aes(x, y, colour = km_cluster)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "K-Means (K=3)", colour = "Cluster") +
+  theme_minimal(base_size = 13) + theme(legend.position = "none")
+
+grid.arrange(p_hc, p_km, ncol = 2)
+```
+
+For well-separated, spherical clusters, K-Means and Ward hierarchical clustering produce very similar results.
+
+---
+
+# Part 7 — Real Data: Clustering the Iris Dataset
+
+Now let us apply both methods to real data. The classic **Iris** dataset has four measurements (sepal length, sepal width, petal length, petal width) for 150 flowers from three species. We will **pretend we do not know the species** and see if clustering can rediscover them.
+
+### Why PCA for Visualisation?
+
+The Iris dataset has four features — we cannot plot four dimensions directly. **Principal Component Analysis (PCA)** compresses the data into two new axes (PC1 and PC2) that capture the most variance. We use PCA here purely for plotting; the clustering itself operates on all four original (scaled) features.
+
+```{r iris-prep}
+data(iris)
+iris_features <- iris[, 1:4]
+iris_scaled <- scale(iris_features)
+```
+
+```{r iris-pairs, fig.width=10, fig.height=8}
+pairs_df <- as.data.frame(iris_scaled)
+pairs_df$Species <- iris$Species
+
+GGally::ggpairs(
+  pairs_df,
+  columns = 1:4,
+  aes(colour = Species, alpha = 0.5),
+  upper = list(continuous = "blank"),
+  diag = list(continuous = "densityDiag"),
+  lower = list(continuous = "points")
+) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  theme_minimal(base_size = 10) +
+  labs(title = "Iris Features — Pairwise Scatter (Colour = True Species)")
+```
+
+Even before clustering, we can see that *setosa* (blue) is well-separated, while *versicolor* (red) and *virginica* (green) overlap in several feature pairs.
+
+## 7.1 K-Means on Iris
+
+```{r iris-kmeans-elbow, fig.width=8, fig.height=5}
+set.seed(MASTER_SEED + 50)
+iris_wcss <- sapply(1:10, function(k) {
+  kmeans(iris_scaled, centers = k, nstart = 25)$tot.withinss
+})
+
+ggplot(data.frame(K = 1:10, WCSS = iris_wcss), aes(K, WCSS)) +
+  geom_line(colour = "#1976D2", linewidth = 1.2) +
+  geom_point(size = 3, colour = "#1976D2") +
+  geom_vline(xintercept = 3, linetype = "dashed", colour = "#E53935") +
+  scale_x_continuous(breaks = 1:10) +
+  labs(title = "Elbow Method on Iris", x = "K", y = "WCSS") +
+  theme_minimal(base_size = 13)
+```
+
+The elbow is at K = 3, which matches the three true species.
+
+```{r iris-kmeans-pca, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 51)
+km_iris <- kmeans(iris_scaled, centers = 3, nstart = 25)
+
+pca_iris <- prcomp(iris_scaled)
+pca_df <- data.frame(PC1 = pca_iris$x[, 1], PC2 = pca_iris$x[, 2])
+pca_df$km_cluster <- factor(km_iris$cluster)
+pca_df$species <- iris$Species
+
+p_km_iris <- ggplot(pca_df, aes(PC1, PC2, colour = km_cluster)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "K-Means Clusters (PCA View)", colour = "Cluster") +
+  theme_minimal(base_size = 13)
+
+p_true_iris <- ggplot(pca_df, aes(PC1, PC2, colour = species)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "True Species (PCA View)", colour = "Species") +
+  theme_minimal(base_size = 13)
+
+grid.arrange(p_km_iris, p_true_iris, ncol = 2)
+```
+
+The K-Means clusters closely match the true species, especially for the well-separated *setosa* group. The overlap between *versicolor* and *virginica* causes a few misassignments.
+
+```{r iris-confusion}
+confusion <- table(Cluster = km_iris$cluster, Species = iris$Species)
+kable(confusion, caption = "K-Means Clusters vs. True Species") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## 7.2 Hierarchical Clustering on Iris
+
+```{r iris-hc-dend, fig.width=10, fig.height=6}
+d_iris <- dist(iris_scaled)
+hc_iris <- hclust(d_iris, method = "ward.D2")
+
+dend_iris <- as.dendrogram(hc_iris)
+dend_iris <- color_branches(dend_iris, k = 3, col = c("#1976D2", "#E53935", "#4CAF50"))
+
+par(mar = c(2, 4, 3, 1))
+plot(dend_iris, main = "Iris Dendrogram (Ward Linkage)", leaflab = "none",
+     cex.main = 1.4)
+abline(h = 12, lty = 2, col = "#E53935", lwd = 1.5)
+```
+
+```{r iris-hc-pca, fig.width=12, fig.height=5}
+hc_iris_clusters <- cutree(hc_iris, k = 3)
+pca_df$hc_cluster <- factor(hc_iris_clusters)
+
+p_hc_iris <- ggplot(pca_df, aes(PC1, PC2, colour = hc_cluster)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "HC Clusters (Ward, PCA View)", colour = "Cluster") +
+  theme_minimal(base_size = 13)
+
+grid.arrange(p_hc_iris, p_true_iris, ncol = 2)
+```
+
+```{r iris-hc-confusion}
+confusion_hc <- table(Cluster = hc_iris_clusters, Species = iris$Species)
+kable(confusion_hc, caption = "HC Clusters vs. True Species") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Both K-Means and hierarchical clustering recover the three species reasonably well, with most confusion between *versicolor* and *virginica*.
+
+## 7.3 Silhouette Analysis on Iris
+
+Let us visualise how well each Iris observation fits its K-Means cluster.
+
+```{r iris-silhouette, fig.width=8, fig.height=6}
+sil_iris <- silhouette(km_iris$cluster, d_iris)
+sil_iris_df <- data.frame(
+  index = 1:nrow(sil_iris),
+  cluster = factor(sil_iris[, 1]),
+  width = sil_iris[, 3]
+) %>% arrange(cluster, desc(width)) %>% mutate(order = row_number())
+
+avg_sil_iris <- round(mean(sil_iris[, 3]), 3)
+
+ggplot(sil_iris_df, aes(x = order, y = width, fill = cluster)) +
+  geom_bar(stat = "identity", width = 1) +
+  geom_hline(yintercept = avg_sil_iris, linetype = "dashed", colour = "black") +
+  scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  coord_flip() +
+  annotate("text", x = 10, y = avg_sil_iris + 0.05,
+           label = paste("Average =", avg_sil_iris), size = 4) +
+  labs(title = "Silhouette Plot for K-Means on Iris (K=3)",
+       x = "Observations (sorted)", y = "Silhouette Width", fill = "Cluster") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.y = element_blank())
+```
+
+One cluster (typically the *setosa* group) shows uniformly high silhouette values, meaning it is well-separated. The other two clusters have some observations near zero, reflecting the versicolor-virginica overlap.
+
+## 7.4 Feature Distributions by Cluster
+
+```{r iris-feature-dist, fig.width=14, fig.height=8}
+iris_clustered <- iris
+iris_clustered$Cluster <- factor(km_iris$cluster)
+
+feature_names <- names(iris)[1:4]
+feat_plots <- lapply(feature_names, function(feat) {
+  ggplot(iris_clustered, aes(x = .data[[feat]], fill = Cluster)) +
+    geom_density(alpha = 0.5) +
+    scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+    labs(title = feat, x = feat, y = "Density") +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none")
+})
+grid.arrange(grobs = feat_plots, ncol = 2)
+```
+
+Petal features (length and width) separate the clusters much more clearly than sepal features, confirming that petal measurements carry the most clustering information in the Iris dataset.
+
+---
+
+# Part 8 — K-Means vs. Hierarchical Clustering
+
+```{r comparison-table}
+comp_df <- data.frame(
+  Property = c(
+    "Requires K in advance?",
+    "Scalability",
+    "Cluster shape",
+    "Deterministic?",
+    "Produces hierarchy?",
+    "Outlier sensitivity",
+    "Best for"
+  ),
+  `K-Means` = c(
+    "Yes",
+    "Good — O(nKi)",
+    "Spherical (round blobs)",
+    "No (random initialisation)",
+    "No",
+    "Moderate — centroids shift toward outliers",
+    "Large datasets, roughly spherical clusters"
+  ),
+  `Hierarchical` = c(
+    "No — cut dendrogram later",
+    "Poor — O(n^2) to O(n^3)",
+    "Flexible (depends on linkage)",
+    "Yes",
+    "Yes (dendrogram)",
+    "Depends on linkage (single is very sensitive)",
+    "Small–medium datasets, exploring hierarchy"
+  ),
+  check.names = FALSE
+)
+
+kable(comp_df, caption = "K-Means vs. Hierarchical Clustering") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+---
+
+# Part 9 — DBSCAN: Density-Based Clustering
+
+**DBSCAN** (Density-Based Spatial Clustering of Applications with Noise) takes a completely different approach. Instead of centres or trees, it finds clusters as **dense regions** separated by sparse areas.
+
+Two parameters:
+
+- **eps** ($\varepsilon$): the radius of the neighbourhood around each point.
+- **minPts**: the minimum number of points within that radius for a point to be considered a "core" point.
+
+DBSCAN does **not** require you to specify K. It discovers the number of clusters automatically and can label outliers as noise.
+
+```{r dbscan-moons, fig.width=12, fig.height=5}
+db_moons <- dbscan::dbscan(moons[, 1:2], eps = 0.15, minPts = 5)
+moons$dbscan_cluster <- factor(db_moons$cluster)
+
+p_db_moons <- ggplot(moons, aes(x, y, colour = dbscan_cluster)) +
+  geom_point(size = 1.8) +
+  scale_colour_manual(values = c("grey60", "#1976D2", "#E53935")) +
+  labs(title = "DBSCAN on Moons", colour = "Cluster") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+
+grid.arrange(p_km_moons, p_db_moons, ncol = 2)
+```
+
+DBSCAN correctly traces the curved shape of each moon, while K-Means cut straight through them. Cluster 0 (grey) represents noise points.
+
+```{r dbscan-blobs, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 60)
+noisy_blobs <- rbind(
+  data.frame(x = rnorm(50, 2, 0.6), y = rnorm(50, 2, 0.6)),
+  data.frame(x = rnorm(50, 7, 0.6), y = rnorm(50, 6, 0.6)),
+  data.frame(x = runif(15, 0, 10), y = runif(15, 0, 9))
+)
+
+db_noisy <- dbscan::dbscan(noisy_blobs, eps = 0.9, minPts = 5)
+noisy_blobs$cluster <- factor(db_noisy$cluster)
+
+km_noisy <- kmeans(noisy_blobs[, 1:2], centers = 2, nstart = 25)
+noisy_blobs$km_cluster <- factor(km_noisy$cluster)
+
+p_db_noisy <- ggplot(noisy_blobs, aes(x, y, colour = cluster)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_colour_manual(values = c("grey60", "#1976D2", "#E53935")) +
+  labs(title = "DBSCAN (noise in grey)") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+p_km_noisy <- ggplot(noisy_blobs, aes(x, y, colour = km_cluster)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "K-Means (K=2)") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+grid.arrange(p_km_noisy, p_db_noisy, ncol = 2)
+```
+
+DBSCAN identifies the scattered noise points (grey) instead of forcing them into a cluster the way K-Means does.
+
+---
+
+# Part 10 — Practical Tips
+
+### When to Use What
+
+```{r decision-guide}
+guide_df <- data.frame(
+  Scenario = c(
+    "Large dataset, roughly spherical clusters",
+    "Small dataset, want to explore hierarchy",
+    "Clusters have arbitrary shapes",
+    "You do not know K",
+    "Data has lots of noise / outliers",
+    "Need fast, scalable results",
+    "Need deterministic output"
+  ),
+  Recommendation = c(
+    "K-Means",
+    "Hierarchical (Ward)",
+    "DBSCAN",
+    "Hierarchical or DBSCAN",
+    "DBSCAN",
+    "K-Means",
+    "Hierarchical"
+  )
+)
+
+kable(guide_df, caption = "Decision Guide: Which Clustering Method?") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+### Top Tips
+
+1. **Always scale your features** before clustering (use `scale()`).
+2. **Run K-Means multiple times** with `nstart >= 25` to avoid bad initialisations.
+3. **Use both the Elbow Method and Silhouette Analysis** — they complement each other.
+4. **Try different linkage methods** in hierarchical clustering; Ward usually gives the most balanced clusters.
+5. **Visualise** your clusters — a 2D PCA scatter plot can reveal problems invisible in summary statistics.
+6. **Remember: clustering is exploratory.** There is no single "correct" answer. Different methods may reveal different structures.
+
+### The Clustering Workflow
+
+Here is a step-by-step guide for any clustering project:
+
+```{r workflow-table}
+workflow_df <- data.frame(
+  Step = 1:8,
+  Action = c(
+    "Understand your data",
+    "Handle missing values",
+    "Scale / standardise features",
+    "Choose a clustering method",
+    "Select K (if needed)",
+    "Fit the model",
+    "Evaluate the clusters",
+    "Interpret and iterate"
+  ),
+  Details = c(
+    "Explore distributions, correlations, and outliers with summary() and ggplot2",
+    "Remove or impute NAs — clustering cannot handle missing values",
+    "Use scale() so no single feature dominates distance calculations",
+    "K-Means for speed/spherical clusters; HC for hierarchy/small data; DBSCAN for arbitrary shapes",
+    "Elbow Method + Silhouette Analysis; not needed for DBSCAN or HC (cut later)",
+    "kmeans(), hclust(), or dbscan::dbscan()",
+    "Silhouette plots, PCA scatter plots, confusion tables (if true labels exist)",
+    "Try different K, linkage, or eps; compare results; domain knowledge matters"
+  )
+)
+
+kable(workflow_df, caption = "Clustering Workflow") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE, width = "5em")
+```
+
+### Three Methods on the Same Data
+
+To wrap up, let us compare all three methods on one final synthetic dataset with varying cluster shapes.
+
+```{r final-comparison, fig.width=14, fig.height=5}
+set.seed(MASTER_SEED + 70)
+ring_theta <- runif(100, 0, 2 * pi)
+ring <- data.frame(
+  x = 3 * cos(ring_theta) + rnorm(100, 0, 0.2),
+  y = 3 * sin(ring_theta) + rnorm(100, 0, 0.2)
+)
+centre <- data.frame(x = rnorm(40, 0, 0.4), y = rnorm(40, 0, 0.4))
+ring_data <- rbind(ring, centre)
+
+km_ring <- kmeans(ring_data, centers = 2, nstart = 25)
+ring_data$km <- factor(km_ring$cluster)
+
+hc_ring <- hclust(dist(ring_data), method = "single")
+ring_data$hc <- factor(cutree(hc_ring, k = 2))
+
+db_ring <- dbscan::dbscan(ring_data[, 1:2], eps = 0.5, minPts = 5)
+ring_data$db <- factor(db_ring$cluster)
+
+p1 <- ggplot(ring_data, aes(x, y, colour = km)) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "grey60")) +
+  labs(title = "K-Means") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+p2 <- ggplot(ring_data, aes(x, y, colour = hc)) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "grey60")) +
+  labs(title = "HC (Single Linkage)") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+p3 <- ggplot(ring_data, aes(x, y, colour = db)) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = c("grey60", "#1976D2", "#E53935")) +
+  labs(title = "DBSCAN") +
+  theme_minimal(base_size = 12) + theme(legend.position = "none")
+
+grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+K-Means fails because it cannot handle the ring shape. Single-linkage HC captures the structure through its chaining behaviour. DBSCAN correctly separates the ring from the centre blob and labels outliers as noise.
+
+---
+
+# Knowledge Check
+
+Test your understanding with these questions:
+
+<details>
+<summary><strong>Q1: What is the fundamental difference between supervised and unsupervised learning?</strong></summary>
+
+In supervised learning, every training example has a known label (e.g., class or numeric target) and the model learns to predict that label. In unsupervised learning, there are **no labels** — the algorithm discovers structure (clusters, patterns, outliers) on its own.
+
+</details>
+
+<details>
+<summary><strong>Q2: What does WCSS measure, and why does K-Means try to minimise it?</strong></summary>
+
+WCSS (Within-Cluster Sum of Squares) is the total squared distance from every point to its assigned centroid. Minimising WCSS produces tight, compact clusters where points are close to their cluster centre. A lower WCSS means better-defined groups.
+
+</details>
+
+<details>
+<summary><strong>Q3: Why does K-Means fail on moon-shaped data?</strong></summary>
+
+K-Means assigns points to the **nearest centroid**, which effectively partitions space with straight-line boundaries (Voronoi cells). Moon-shaped clusters require curved boundaries that K-Means cannot produce. The algorithm assumes clusters are spherical/convex.
+
+</details>
+
+<details>
+<summary><strong>Q4: What is the difference between single linkage and Ward linkage?</strong></summary>
+
+**Single linkage** measures the distance between two clusters as the distance between their **closest** points. This can chain together elongated clusters but is sensitive to noise. **Ward linkage** merges the two clusters whose merge causes the **smallest increase in total within-cluster variance**, producing compact, spherical clusters similar to K-Means.
+
+</details>
+
+<details>
+<summary><strong>Q5: Why is feature scaling important before clustering?</strong></summary>
+
+Clustering algorithms use distance to measure similarity. If one feature has a much larger range than another (e.g., income in thousands vs. age in decades), it will dominate the distance calculation. Scaling (e.g., z-score standardisation) ensures all features contribute equally.
+
+</details>
+
+<details>
+<summary><strong>Q6: When would you choose DBSCAN over K-Means?</strong></summary>
+
+Use DBSCAN when:
+
+- You **do not know** how many clusters exist.
+- Clusters have **irregular or non-spherical** shapes.
+- The data contains **noise or outliers** that should not be forced into clusters.
+
+DBSCAN discovers K automatically and labels outliers as noise (cluster 0).
+
+</details>
+
+---
+
+# Summary
+
+```{r summary-table}
+summary_df <- data.frame(
+  Concept = c(
+    "Unsupervised Learning",
+    "K-Means Algorithm",
+    "WCSS / Inertia",
+    "Elbow Method",
+    "Silhouette Score",
+    "K-Means Pitfalls",
+    "Hierarchical Clustering",
+    "Linkage Methods",
+    "Dendrogram",
+    "Cutting the Tree",
+    "DBSCAN",
+    "Feature Scaling"
+  ),
+  `Key Idea` = c(
+    "Learn patterns from data with no labels",
+    "Assign points to nearest centroid, update centroids, repeat",
+    "Sum of squared distances from each point to its centroid",
+    "Plot WCSS vs. K; the bend indicates the best K",
+    "s(i) = (b-a)/max(a,b); measures cluster fit quality",
+    "Random init, spherical assumption, needs K, needs scaling",
+    "Build a tree of progressively merged clusters",
+    "How to measure distance between clusters (single, complete, average, Ward)",
+    "Tree diagram showing merge order and distances",
+    "Draw horizontal line to get K clusters from the tree",
+    "Density-based clustering; finds arbitrary shapes, no K needed",
+    "Standardise features so no single feature dominates distance"
+  ),
+  `R Implementation` = c(
+    "Various packages",
+    "kmeans(data, centers = K, nstart = 25)",
+    "km$tot.withinss",
+    "Plot WCSS for K = 1..10",
+    "cluster::silhouette()",
+    "nstart, scale(), K-Means++",
+    "hclust(dist(data), method = ...)",
+    "method = 'single' / 'complete' / 'average' / 'ward.D2'",
+    "plot(as.dendrogram(hc))",
+    "cutree(hc, k = K)",
+    "dbscan::dbscan(data, eps, minPts)",
+    "scale(data)"
+  ),
+  check.names = FALSE
+)
+
+kable(summary_df, caption = "Week 07 Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+---
+
+# References
+
+[1] Wikipedia contributors, "Unsupervised learning," *Wikipedia, The Free Encyclopedia*. [Online]. Available: https://en.wikipedia.org/wiki/Unsupervised_learning
+
+[2] A. Wagih, "K-means & Hierarchical Clustering," *Kaggle*. [Online]. Available: https://www.kaggle.com/code/abdallahwagih/k-means-hierarchical-clustering
+
+[3] Wikipedia contributors, "K-means clustering," *Wikipedia, The Free Encyclopedia*. [Online]. Available: https://en.wikipedia.org/wiki/K-means_clustering
+
+[4] Wikipedia contributors, "Hierarchical clustering," *Wikipedia, The Free Encyclopedia*. [Online]. Available: https://en.wikipedia.org/wiki/Hierarchical_clustering
+
+[5] A. Géron, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*, 2nd ed. Sebastopol, CA: O'Reilly Media, 2019, ch. 9.
+
+[6] B. C. Boehmke and B. M. Greenwell, *Hands-On Machine Learning with R*. Boca Raton, FL: CRC Press, 2020.
+
+[7] J. A. Hartigan and M. A. Wong, "Algorithm AS 136: A K-Means Clustering Algorithm," *Journal of the Royal Statistical Society. Series C (Applied Statistics)*, vol. 28, no. 1, pp. 100–108, 1979.
+
+[8] seedhash R package. [Online]. Available: https://github.com/melhzy/seedhash
+
+---
+
+<div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 10px; margin-top: 30px;">
+<strong>ANLY 530 — Principles & Applications of Machine Learning</strong><br/>
+<em>Harrisburg University</em><br/><br/>
+Next week: Preprocessing & Dimensionality Reduction
+</div>
