@@ -1,6 +1,6 @@
 ---
 title: "Week 07: Unsupervised Learning — K-Means & Hierarchical Clustering"
-author: "Ziyuan Huang"
+author: "Roozbeh Sadeghian"
 date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
 output:
   html_document:
