@@ -56,6 +56,7 @@ pacman::p_load(
   gridExtra,
   scales,
   caret,
+  RANN,
   corrplot,
   GGally,
   randomForest,
@@ -193,6 +194,7 @@ Missing data is one of the most common problems in real datasets. There are thre
 
 ```{r missing-heatmap, fig.width=8, fig.height=5}
 missing_matrix <- messy %>%
+  mutate(across(everything(), as.character)) %>%
   mutate(row = row_number()) %>%
   pivot_longer(-row, names_to = "Feature", values_to = "Value") %>%
   mutate(is_missing = is.na(Value))
@@ -571,8 +573,7 @@ p_label <- ggplot(clean, aes(x = factor(edu_label), fill = education)) +
   labs(title = "Label Encoding (Ordinal)", x = "Encoded Value", y = "Count", fill = "Education") +
   theme_minimal(base_size = 12)
 
-onehot_long <- onehot_df %>%
-  select(starts_with("colour")) %>%
+onehot_long <- as.data.frame(dummy_result) %>%
   mutate(row = row_number()) %>%
   pivot_longer(-row, names_to = "Column", values_to = "Value")
 
