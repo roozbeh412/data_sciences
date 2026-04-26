@@ -1,6 +1,6 @@
 ---
 title: "Week 08: Data Preprocessing & Feature Engineering"
-author: "Ziyuan Huang"
+author: "Roozbeh Sadeghian"
 date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
 output:
   html_document:
