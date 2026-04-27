@@ -27,19 +27,19 @@ Quick links to every week. Click **📄 Tutorial** to open the live HTML, or **�
 | Week | Topic                                           | Tutorial                                                                                                             | Source            |
 | ---- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | 01   | Introduction to Machine Learning                | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week01/01_Intro_to_Machine_Learning.html) | [📂 Folder](Week01/) |
-| 02   | Python & R for Machine Learning                 | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week02/Week02-DecisionTrees-Tutorial.html)| [📂 Folder](Week02/) |
-| 03   | Decision Trees                                  | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week03/Week03-RandomForest-Tutorial.html) | [📂 Folder](Week03/) |
-| 04   | Random Forests & Ensemble Methods               | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week04/Week04-Regression-Tutorial.html)   | [📂 Folder](Week04/) |
-| 05   | Regression                                      | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week05/Week05-SVM-Tutorial.html)          | [📂 Folder](Week05/) |
-| 06   | Support Vector Machines                         | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week06/Week06-NaiveBayes-Tutorial.html)   | [📂 Folder](Week06/) |
-| 07   | Probabilistic Learning & Classification Metrics | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week07/Week07-UnsupervisedLearning-Tutorial.html)| [📂 Folder](Week07/) |
-| 08   | Unsupervised Learning                           | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week08/Week08-FeatureEngineering-Tutorial.html)  | [📂 Folder](Week08/) |
-| 09   | Preprocessing & Feature Selection               | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html)  | [📂 Folder](Week09/) |
-| 10   | Feature Engineering & Dimensionality Reduction  | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html) | [📂 Folder](Week10/) |
-| 11   | Model Evaluation & Selection                    | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week11/) |
-| 12   | Advanced Ensemble Methods                       | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week12/) |
-| 13   | Introduction to Neural Networks                 | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week13/) |
-| 14   | Final Project Wrap-Up & Review                  | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week14/) |
+| 02   | Decision Trees                                  | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week02/Week02-DecisionTrees-Tutorial.html)| [📂 Folder](Week02/) |
+| 03   | Random Forests & Ensemble Methods               | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week03/Week03-RandomForest-Tutorial.html) | [📂 Folder](Week03/) |
+| 04   | Regression                                      | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week04/Week04-Regression-Tutorial.html)   | [📂 Folder](Week04/) |
+| 05   | Support Vector Machines                         | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week05/Week05-SVM-Tutorial.html)          | [📂 Folder](Week05/) |
+| 06   | Probabilistic Learning & Classification Metrics | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week06/Week06-NaiveBayes-Tutorial.html)   | [📂 Folder](Week06/) |
+| 07   | Unsupervised Learning                           | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week07/Week07-UnsupervisedLearning-Tutorial.html)| [📂 Folder](Week07/) |
+| 08   | Preprocessing & Feature Selection               | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week08/Week08-FeatureEngineering-Tutorial.html)  | [📂 Folder](Week08/) |
+| 09   | Feature Engineering & Dimensionality Reduction  | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html)  | [📂 Folder](Week09/) |
+| 10   | Model Evaluation & Selection                    | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html) | [📂 Folder](Week10/) |
+| 11   | Advanced Ensemble Methods                       | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week11/) |
+| 12   | Introduction to Neural Networks                 | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week12/) |
+| 13   | Final Project Wrap-Up & Review                  | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week13/) |
+
 
 ---
 
