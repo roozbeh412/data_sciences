@@ -1,0 +1,1175 @@
+---
+title: "Week 10: Model Evaluation — How Good Is Your Model, Really?"
+author: "Roozbeh Sadeghian"
+date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  fig.width = 8,
+  fig.height = 6
+)
+
+# Deterministic seed via seedhash — reproducible across machines
+if (!requireNamespace("seedhash", quietly = TRUE)) {
+  if (!requireNamespace("pak", quietly = TRUE)) {
+    install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
+  }
+  pak::pkg_install("github::roozbeh412/seedhash/R", ask = FALSE)
+}
+```
+
+```{r seeds, include=TRUE}
+library(seedhash)
+gen <- SeedHashGenerator$new("ANLY530-Week10-ModelEvaluation")
+MASTER_SEED <- gen$generate_seeds(1)
+set.seed(MASTER_SEED)
+```
+
+```{r seedhash-info, echo=FALSE, results='asis'}
+cat(sprintf("**Random Seed Source:** `seedhash` package — input string: `\"ANLY530-Week10-ModelEvaluation\"` → seed: `%d`\n\n", MASTER_SEED))
+```
+
+# Introduction
+
+Over the past nine weeks we have built a variety of machine learning models — Decision Trees, Random Forests, SVMs, Naive Bayes, and more. Each time we looked at a single number — **accuracy** — and declared the model "good" or "bad." But accuracy alone can be dangerously misleading.
+
+Imagine a model that detects a rare disease affecting 1 in 1,000 people. A model that **always says "No disease"** would be 99.9% accurate — yet it would miss every single sick patient. Is that a good model? Obviously not. This week we learn how to look deeper.
+
+> **Plain English:** Model evaluation is like grading a student. A single final exam score doesn't tell you everything. Did they do well on essays but bomb the multiple choice? Were the questions too easy? Model evaluation gives you a *detailed report card* — not just one number, but many different views of how your model performs and where it fails.
+
+**Learning Objectives:**
+
+1. Understand why **accuracy alone is not enough** and the dangers of class imbalance.
+2. Master the **Confusion Matrix** and its four building blocks: TP, TN, FP, FN.
+3. Compute and interpret **Precision, Recall, Specificity**, and the **F1 Score**.
+4. Understand and visualise the **ROC Curve** and its **AUC** (Area Under the Curve).
+5. Learn key **regression metrics**: MAE, MSE, RMSE, $R^2$, and Adjusted $R^2$.
+6. Understand **Cross-Validation** and why it guards against overfitting.
+7. Apply all metrics to models from previous weeks on the **Iris** dataset and a **regression** dataset.
+8. Build rich visualisations that reveal model strengths and weaknesses.
+
+## Required Packages
+
+```{r load-packages}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  tidyverse,
+  caret,
+  e1071,
+  naivebayes,
+  rpart,
+  randomForest,
+  pROC,
+  gridExtra,
+  scales,
+  knitr,
+  kableExtra,
+  MASS,
+  kernlab
+)
+```
+
+---
+
+# Part 1: Why Accuracy Is Not Enough
+
+## 1.1 The Accuracy Paradox
+
+Let's start with the example from the introduction. Suppose we have 1,000 patients: 10 are sick, 990 are healthy.
+
+```{r accuracy-paradox-data}
+set.seed(MASTER_SEED)
+
+n_healthy <- 990
+n_sick    <- 10
+actual <- factor(c(rep("Healthy", n_healthy), rep("Sick", n_sick)),
+                 levels = c("Healthy", "Sick"))
+
+lazy_pred <- factor(rep("Healthy", 1000), levels = c("Healthy", "Sick"))
+
+lazy_accuracy <- mean(lazy_pred == actual)
+cat(sprintf("'Always predict Healthy' accuracy: %.1f%%\n", lazy_accuracy * 100))
+cat(sprintf("Sick patients correctly identified: %d out of %d\n",
+            sum(lazy_pred[actual == "Sick"] == "Sick"), n_sick))
+```
+
+```{r accuracy-paradox-viz, fig.height=4, fig.width=9}
+paradox_df <- data.frame(
+  Metric = c("Accuracy", "Sick Patients\nCaught"),
+  Value  = c(lazy_accuracy, 0),
+  Label  = c(sprintf("%.1f%%", lazy_accuracy * 100), "0%")
+)
+
+ggplot(paradox_df, aes(x = Metric, y = Value, fill = Metric)) +
+  geom_col(width = 0.5) +
+  geom_text(aes(label = Label), vjust = -0.4, fontface = "bold", size = 5) +
+  scale_fill_manual(values = c("Accuracy" = "#4CAF50", "Sick Patients\nCaught" = "#E53935")) +
+  scale_y_continuous(labels = percent, limits = c(0, 1.15)) +
+  labs(
+    title = "The Accuracy Paradox: 99% Accuracy, 0% Useful",
+    subtitle = "A model that always predicts 'Healthy' scores 99% accuracy but catches zero sick patients",
+    x = NULL, y = NULL
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+```
+
+> **Takeaway:** When classes are **imbalanced** (one class is much more common than the other), accuracy is meaningless. We need metrics that tell us how well the model handles the *rare but important* class.
+
+## 1.2 Two Types of Errors: The Fire Alarm Analogy
+
+Every classification model can make two kinds of mistakes:
+
+| Error Type | Technical Name | Plain English | Analogy |
+|:-----------|:---------------|:--------------|:--------|
+| **False Positive (FP)** | Type I Error | The model says "Yes" when the answer is really "No" | A fire alarm goes off but there is no fire |
+| **False Negative (FN)** | Type II Error | The model says "No" when the answer is really "Yes" | There is a fire but the alarm stays silent |
+
+```{r error-types-viz, fig.height=5, fig.width=10}
+error_df <- data.frame(
+  Type = factor(c("True Positive (TP)", "True Negative (TN)",
+                   "False Positive (FP)\nType I Error", "False Negative (FN)\nType II Error"),
+                levels = c("True Positive (TP)", "True Negative (TN)",
+                           "False Positive (FP)\nType I Error", "False Negative (FN)\nType II Error")),
+  Predicted = c("Positive", "Negative", "Positive", "Negative"),
+  Actual    = c("Positive", "Negative", "Negative", "Positive"),
+  Correct   = c("Correct", "Correct", "Wrong", "Wrong"),
+  Analogy   = c("Alarm rings,\nthere IS a fire",
+                 "No alarm,\nno fire",
+                 "Alarm rings,\nbut NO fire",
+                 "No alarm,\nbut there IS a fire!")
+)
+
+ggplot(error_df, aes(x = Predicted, y = Actual, fill = Correct)) +
+  geom_tile(color = "white", linewidth = 2, width = 0.9, height = 0.9) +
+  geom_text(aes(label = paste0(Type, "\n\n", Analogy)),
+            size = 3.5, fontface = "bold", lineheight = 1.1) +
+  scale_fill_manual(values = c("Correct" = "#A5D6A7", "Wrong" = "#EF9A9A")) +
+  labs(
+    title = "The Four Outcomes of Any Classification",
+    subtitle = "Think of it like a fire alarm: does it ring when it should?",
+    x = "What the Model Predicted", y = "What Actually Happened"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        panel.grid = element_blank()) +
+  coord_equal()
+```
+
+> **Which error is worse?** It depends on the problem. In medical diagnosis, **False Negatives** are catastrophic (missing a disease). In spam filtering, **False Positives** are more annoying (a real email goes to junk). Understanding which error matters more is the **first step** in choosing the right evaluation metric.
+
+---
+
+# Part 2: The Confusion Matrix — Your Model's Report Card
+
+## 2.1 Building a Real Confusion Matrix
+
+Let's build actual models on the Iris dataset (the same one we've used in previous weeks) and create a proper confusion matrix. We'll use a Random Forest as our example model.
+
+```{r iris-setup}
+data(iris)
+set.seed(MASTER_SEED)
+
+train_idx  <- sample(1:nrow(iris), floor(0.7 * nrow(iris)))
+iris_train <- iris[train_idx, ]
+iris_test  <- iris[-train_idx, ]
+
+rf_model <- randomForest(Species ~ ., data = iris_train, ntree = 200)
+rf_pred  <- predict(rf_model, iris_test)
+
+cat(sprintf("Training set: %d observations\nTest set: %d observations\n",
+            nrow(iris_train), nrow(iris_test)))
+```
+
+```{r confusion-matrix-compute}
+cm <- confusionMatrix(rf_pred, iris_test$Species)
+print(cm)
+```
+
+## 2.2 Visualising the Confusion Matrix
+
+A confusion matrix as a table of numbers is hard to read. Let's turn it into a heatmap.
+
+```{r confusion-heatmap, fig.height=5, fig.width=6}
+cm_table <- as.data.frame(cm$table)
+names(cm_table) <- c("Predicted", "Actual", "Count")
+
+cm_table$Label <- ifelse(cm_table$Predicted == cm_table$Actual,
+                          paste0(cm_table$Count, "\n(correct)"),
+                          paste0(cm_table$Count, "\n(error)"))
+
+ggplot(cm_table, aes(x = Actual, y = Predicted, fill = Count)) +
+  geom_tile(color = "white", linewidth = 1.5) +
+  geom_text(aes(label = Label), size = 5, fontface = "bold") +
+  scale_fill_gradient(low = "white", high = "#1976D2") +
+  labs(
+    title = "Confusion Matrix — Random Forest on Iris Test Set",
+    subtitle = sprintf("Overall Accuracy: %.1f%%", cm$overall["Accuracy"] * 100),
+    x = "Actual Class", y = "Predicted Class"
+  ) +
+  theme_minimal(base_size = 13) +
+  coord_equal() +
+  theme(legend.position = "none")
+```
+
+> **How to read:** The diagonal cells (top-left to bottom-right) are **correct predictions**. Everything off the diagonal is an error. A perfect model would have zeros everywhere except the diagonal.
+
+## 2.3 Per-Class Metrics from the Confusion Matrix
+
+The confusion matrix gives us the raw numbers, but we need summary metrics to communicate performance clearly.
+
+```{r per-class-metrics}
+per_class <- as.data.frame(cm$byClass)
+per_class$Class <- rownames(per_class)
+per_class$Class <- gsub("Class: ", "", per_class$Class)
+
+metrics_display <- per_class %>%
+  dplyr::select(Class, Sensitivity, Specificity, `Pos Pred Value`, `Neg Pred Value`, F1) %>%
+  dplyr::rename(Recall = Sensitivity, Precision = `Pos Pred Value`, NPV = `Neg Pred Value`)
+
+knitr::kable(metrics_display, digits = 3,
+             caption = "Per-Class Metrics from the Confusion Matrix") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+---
+
+# Part 3: Precision, Recall, and the F1 Score
+
+## 3.1 Precision — "When the Model Says Yes, Is It Right?"
+
+$$\text{Precision} = \frac{\text{True Positives}}{\text{True Positives} + \text{False Positives}}$$
+
+> **Plain English:** Of all the times the model predicted a positive result, how many were *actually* positive? High precision means the model rarely cries wolf.
+>
+> **Analogy:** A detective with high precision rarely arrests an innocent person. When they say "guilty," they're almost always right.
+
+## 3.2 Recall (Sensitivity) — "Of All the Real Positives, How Many Did We Catch?"
+
+$$\text{Recall} = \frac{\text{True Positives}}{\text{True Positives} + \text{False Negatives}}$$
+
+> **Plain English:** Of all the actual positive cases, how many did the model find? High recall means the model doesn't miss many real cases.
+>
+> **Analogy:** A detective with high recall catches almost every criminal. They might arrest some innocent people too, but they don't let the guilty go free.
+
+## 3.3 The Precision-Recall Trade-Off
+
+Precision and recall are always in tension. If you make your model more cautious (higher threshold), precision goes up but recall goes down. If you make it more aggressive (lower threshold), recall goes up but precision suffers.
+
+```{r precision-recall-tradeoff, fig.height=5.5, fig.width=10}
+set.seed(MASTER_SEED)
+n <- 500
+x <- c(rnorm(n, mean = 2, sd = 1.5), rnorm(n, mean = 5, sd = 1.5))
+y <- factor(c(rep("Negative", n), rep("Positive", n)))
+scores <- x + rnorm(2*n, sd = 0.3)
+
+thresholds <- seq(min(scores), max(scores), length.out = 200)
+
+pr_df <- data.frame(
+  Threshold = thresholds,
+  Precision = sapply(thresholds, function(t) {
+    pred_pos <- scores >= t
+    tp <- sum(pred_pos & y == "Positive")
+    fp <- sum(pred_pos & y == "Negative")
+    if (tp + fp == 0) return(NA)
+    tp / (tp + fp)
+  }),
+  Recall = sapply(thresholds, function(t) {
+    pred_pos <- scores >= t
+    tp <- sum(pred_pos & y == "Positive")
+    fn <- sum(!pred_pos & y == "Positive")
+    tp / (tp + fn)
+  })
+)
+
+pr_long <- pr_df %>%
+  dplyr::filter(!is.na(Precision)) %>%
+  pivot_longer(cols = c(Precision, Recall), names_to = "Metric", values_to = "Value")
+
+ggplot(pr_long, aes(x = Threshold, y = Value, color = Metric)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = c(Precision = "#1976D2", Recall = "#E53935")) +
+  scale_y_continuous(labels = percent) +
+  geom_vline(xintercept = 3.5, linetype = "dashed", color = "grey40") +
+  annotate("text", x = 3.7, y = 0.5, label = "Sweet spot?\nDepends on\nyour problem!",
+           fontface = "italic", color = "grey30", size = 3.5, hjust = 0) +
+  labs(
+    title = "The Precision-Recall Trade-Off",
+    subtitle = "As you raise the threshold, precision goes up but recall goes down — you can't maximize both",
+    x = "Decision Threshold", y = "Metric Value", color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+## 3.4 The F1 Score — Balancing Precision and Recall
+
+When you need a single number that balances both precision and recall, use the **F1 Score**. It is the **harmonic mean** of precision and recall:
+
+$$F_1 = 2 \times \frac{\text{Precision} \times \text{Recall}}{\text{Precision} + \text{Recall}}$$
+
+> **Why harmonic mean, not regular average?** The harmonic mean punishes extreme values. If precision is 100% and recall is 0%, the arithmetic mean gives 50% (seems okay), but the F1 gives **0%** (correctly signals the model is useless). The harmonic mean forces both metrics to be high for the F1 to be high.
+
+```{r f1-harmonic-mean-viz, fig.height=4.5, fig.width=9}
+scenarios <- data.frame(
+  Scenario = c("Balanced\n(Good model)",
+               "High Precision,\nLow Recall",
+               "Low Precision,\nHigh Recall",
+               "Both Low\n(Bad model)"),
+  Precision = c(0.90, 0.95, 0.30, 0.20),
+  Recall    = c(0.85, 0.10, 0.95, 0.15)
+)
+scenarios$F1 <- 2 * (scenarios$Precision * scenarios$Recall) /
+                    (scenarios$Precision + scenarios$Recall)
+scenarios$ArithMean <- (scenarios$Precision + scenarios$Recall) / 2
+
+scenarios_long <- scenarios %>%
+  pivot_longer(cols = c(Precision, Recall, F1, ArithMean),
+               names_to = "Metric", values_to = "Value") %>%
+  mutate(Metric = factor(Metric, levels = c("Precision", "Recall", "F1", "ArithMean")))
+
+ggplot(scenarios_long, aes(x = Metric, y = Value, fill = Metric)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = sprintf("%.0f%%", Value * 100)),
+            vjust = -0.3, size = 3, fontface = "bold") +
+  facet_wrap(~ Scenario, nrow = 1) +
+  scale_fill_manual(values = c(Precision = "#1976D2", Recall = "#E53935",
+                                F1 = "#4CAF50", ArithMean = "#FF9800")) +
+  scale_y_continuous(labels = percent, limits = c(0, 1.15)) +
+  labs(
+    title = "F1 Score vs. Arithmetic Mean: Why Harmonic Mean Matters",
+    subtitle = "F1 correctly penalises extreme imbalances between precision and recall",
+    x = NULL, y = NULL
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "bottom",
+        strip.text = element_text(face = "bold", size = 9),
+        axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+## 3.5 F-beta Score — Tuning the Balance
+
+Sometimes you care more about recall than precision (or vice versa). The **F-beta** score lets you control this:
+
+$$F_\beta = (1 + \beta^2) \times \frac{\text{Precision} \times \text{Recall}}{(\beta^2 \times \text{Precision}) + \text{Recall}}$$
+
+| $\beta$ Value | Emphasis | Use Case |
+|:--------------|:---------|:---------|
+| $\beta = 0.5$ | Weighs precision **more** | Spam filtering (don't want real emails in junk) |
+| $\beta = 1$ | Equal weight (standard F1) | General-purpose |
+| $\beta = 2$ | Weighs recall **more** | Medical diagnosis (don't want to miss sick patients) |
+
+## 3.6 Choosing the Right Metric: A Decision Guide
+
+```{r metric-guide-table, echo=FALSE}
+guide <- data.frame(
+  Situation = c(
+    "Balanced classes, no special requirements",
+    "Imbalanced classes (rare positive class)",
+    "Missing a positive case is very costly (disease, fraud)",
+    "False alarms are very costly (spam filter, legal)",
+    "Need one number to compare models",
+    "Need to understand threshold effects",
+    "Comparing models across different datasets"
+  ),
+  `Best Metric` = c(
+    "Accuracy",
+    "F1 Score, AUC-ROC, or Precision-Recall AUC",
+    "Recall (Sensitivity) — minimise False Negatives",
+    "Precision — minimise False Positives",
+    "F1 Score or AUC-ROC",
+    "Precision-Recall Curve or ROC Curve",
+    "AUC-ROC (threshold-independent)"
+  )
+)
+knitr::kable(guide, col.names = c("Situation", "Best Metric"),
+             caption = "Quick Guide: Which Metric Should You Use?") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+---
+
+# Part 4: The ROC Curve and AUC — The Gold Standard
+
+## 4.1 What Is the ROC Curve?
+
+The **ROC (Receiver Operating Characteristic) curve** plots **True Positive Rate** (Recall) against **False Positive Rate** (1 - Specificity) at every possible threshold.
+
+- **True Positive Rate (TPR)** = Recall = $\frac{TP}{TP + FN}$
+- **False Positive Rate (FPR)** = $\frac{FP}{FP + TN}$ = 1 - Specificity
+
+> **Plain English:** Imagine you're turning a dial from "very cautious" to "very aggressive." At each setting, you ask:
+>
+> - *How many real positives did I catch?* (TPR — the y-axis)
+> - *How many negatives did I falsely accuse?* (FPR — the x-axis)
+>
+> The ROC curve plots all these points as you turn the dial from one extreme to the other.
+
+## 4.2 Building ROC Curves for Multiple Models
+
+Let's train several classifiers from previous weeks and compare their ROC curves. Since the Iris dataset has 3 classes, we'll focus on a **binary task**: classifying "virginica" vs. "not virginica."
+
+```{r binary-iris-setup}
+set.seed(MASTER_SEED)
+
+iris_binary <- iris %>%
+  mutate(Is_Virginica = factor(ifelse(Species == "virginica", "Yes", "No"),
+                               levels = c("No", "Yes")))
+
+train_idx_b <- sample(1:nrow(iris_binary), floor(0.7 * nrow(iris_binary)))
+train_b <- iris_binary[train_idx_b, ]
+test_b  <- iris_binary[-train_idx_b, ]
+
+dt_b  <- rpart(Is_Virginica ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width,
+               data = train_b, method = "class")
+rf_b  <- randomForest(Is_Virginica ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width,
+                       data = train_b, ntree = 200)
+nb_b  <- naiveBayes(Is_Virginica ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width,
+                     data = train_b)
+svm_b <- svm(Is_Virginica ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width,
+              data = train_b, kernel = "radial", probability = TRUE)
+
+prob_dt  <- predict(dt_b,  test_b, type = "prob")[, "Yes"]
+prob_rf  <- predict(rf_b,  test_b, type = "prob")[, "Yes"]
+prob_nb  <- predict(nb_b,  test_b, type = "raw")[, "Yes"]
+prob_svm <- attr(predict(svm_b, test_b, probability = TRUE), "probabilities")[, "Yes"]
+```
+
+```{r roc-curves, fig.height=6, fig.width=8}
+roc_dt  <- roc(test_b$Is_Virginica, prob_dt,  levels = c("No", "Yes"), direction = "<", quiet = TRUE)
+roc_rf  <- roc(test_b$Is_Virginica, prob_rf,  levels = c("No", "Yes"), direction = "<", quiet = TRUE)
+roc_nb  <- roc(test_b$Is_Virginica, prob_nb,  levels = c("No", "Yes"), direction = "<", quiet = TRUE)
+roc_svm <- roc(test_b$Is_Virginica, prob_svm, levels = c("No", "Yes"), direction = "<", quiet = TRUE)
+
+roc_data <- bind_rows(
+  data.frame(FPR = 1 - roc_dt$specificities,  TPR = roc_dt$sensitivities,
+             Model = sprintf("Decision Tree (AUC = %.3f)", auc(roc_dt))),
+  data.frame(FPR = 1 - roc_rf$specificities,  TPR = roc_rf$sensitivities,
+             Model = sprintf("Random Forest (AUC = %.3f)", auc(roc_rf))),
+  data.frame(FPR = 1 - roc_nb$specificities,  TPR = roc_nb$sensitivities,
+             Model = sprintf("Naive Bayes (AUC = %.3f)", auc(roc_nb))),
+  data.frame(FPR = 1 - roc_svm$specificities, TPR = roc_svm$sensitivities,
+             Model = sprintf("SVM (AUC = %.3f)", auc(roc_svm)))
+)
+
+ggplot(roc_data, aes(x = FPR, y = TPR, color = Model)) +
+  geom_line(linewidth = 1.1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  annotate("text", x = 0.55, y = 0.45, label = "Random guessing\n(AUC = 0.50)",
+           color = "grey50", fontface = "italic", size = 3.5) +
+  scale_color_manual(values = c("#FF9800", "#4CAF50", "#9C27B0", "#2196F3")) +
+  labs(
+    title = "ROC Curves — Comparing Four Classifiers",
+    subtitle = "Task: Is this iris flower virginica? (binary classification)",
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity / Recall)",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom") +
+  coord_equal()
+```
+
+## 4.3 Understanding AUC (Area Under the Curve)
+
+The **AUC** summarises the entire ROC curve into a single number between 0 and 1.
+
+```{r auc-interpretation-table, echo=FALSE}
+auc_guide <- data.frame(
+  AUC_Range = c("0.90 – 1.00", "0.80 – 0.90", "0.70 – 0.80",
+                "0.60 – 0.70", "0.50 – 0.60"),
+  Grade     = c("Excellent (A)", "Good (B)", "Fair (C)", "Poor (D)", "Fail (F)"),
+  Meaning   = c(
+    "The model almost perfectly separates the classes",
+    "The model does a good job with some overlap",
+    "The model is decent but misses a fair number of cases",
+    "The model is barely better than a coin flip",
+    "The model is no better (or worse) than random guessing"
+  )
+)
+knitr::kable(auc_guide, col.names = c("AUC Range", "Grade", "Interpretation"),
+             caption = "Interpreting AUC Values") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+```{r auc-visual, fig.height=5, fig.width=9}
+auc_scores <- data.frame(
+  Model = c("Decision Tree", "Random Forest", "Naive Bayes", "SVM"),
+  AUC   = c(auc(roc_dt), auc(roc_rf), auc(roc_nb), auc(roc_svm))
+)
+
+auc_scores$Grade <- cut(auc_scores$AUC,
+                        breaks = c(0, 0.60, 0.70, 0.80, 0.90, 1.00),
+                        labels = c("Fail", "Poor", "Fair", "Good", "Excellent"),
+                        right = TRUE)
+
+ggplot(auc_scores, aes(x = reorder(Model, AUC), y = AUC, fill = Grade)) +
+  geom_col(width = 0.55) +
+  geom_text(aes(label = sprintf("%.3f", AUC)), hjust = -0.1, fontface = "bold", size = 4.5) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey50") +
+  annotate("text", x = 0.7, y = 0.52, label = "Random baseline", color = "grey50", size = 3) +
+  coord_flip(ylim = c(0, 1.1)) +
+  scale_fill_manual(values = c(Fail = "#E53935", Poor = "#FF9800",
+                                Fair = "#FFC107", Good = "#66BB6A", Excellent = "#1976D2")) +
+  labs(
+    title = "AUC Comparison Across Models",
+    subtitle = "Higher AUC = better at separating the two classes",
+    x = NULL, y = "Area Under ROC Curve"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+> **Why is AUC so popular?**
+>
+> 1. It is **threshold-independent** — you don't have to pick a cut-off to compare models.
+> 2. It is **scale-independent** — it doesn't matter if one model outputs probabilities from 0 to 1 and another from 0 to 100.
+> 3. It is **relatively robust to class imbalance** (though not immune).
+
+---
+
+# Part 5: Precision-Recall Curve — When Classes Are Imbalanced
+
+## 5.1 Why ROC Can Be Misleading with Imbalanced Data
+
+When the negative class vastly outnumbers the positive class, even a small FPR can mean a large number of false positives. The **Precision-Recall (PR) curve** focuses exclusively on the positive class and is more informative for imbalanced datasets.
+
+```{r imbalanced-example, fig.height=5.5, fig.width=10}
+set.seed(MASTER_SEED)
+
+n_neg <- 950
+n_pos <- 50
+imb_data <- data.frame(
+  score = c(rnorm(n_neg, mean = 2, sd = 1.5), rnorm(n_pos, mean = 4, sd = 1.2)),
+  label = factor(c(rep("Negative", n_neg), rep("Positive", n_pos)),
+                 levels = c("Negative", "Positive"))
+)
+
+pr_points <- data.frame(Threshold = numeric(), Precision = numeric(),
+                         Recall = numeric(), stringsAsFactors = FALSE)
+
+for (t in seq(min(imb_data$score), max(imb_data$score), length.out = 300)) {
+  pred_pos <- imb_data$score >= t
+  tp <- sum(pred_pos & imb_data$label == "Positive")
+  fp <- sum(pred_pos & imb_data$label == "Negative")
+  fn <- sum(!pred_pos & imb_data$label == "Positive")
+  prec <- if (tp + fp > 0) tp / (tp + fp) else NA
+  rec  <- tp / (tp + fn)
+  pr_points <- rbind(pr_points, data.frame(Threshold = t, Precision = prec, Recall = rec))
+}
+
+pr_points <- pr_points %>% dplyr::filter(!is.na(Precision))
+
+p1 <- ggplot(pr_points, aes(x = Recall, y = Precision)) +
+  geom_line(color = "#1976D2", linewidth = 1.2) +
+  geom_hline(yintercept = n_pos / (n_neg + n_pos), linetype = "dashed", color = "grey50") +
+  annotate("text", x = 0.8, y = n_pos/(n_neg+n_pos) + 0.03,
+           label = "Random baseline", color = "grey50", size = 3) +
+  scale_x_continuous(labels = percent) +
+  scale_y_continuous(labels = percent, limits = c(0, 1)) +
+  labs(title = "Precision-Recall Curve", subtitle = "Imbalanced data (5% positive)",
+       x = "Recall", y = "Precision") +
+  theme_minimal(base_size = 11)
+
+p2 <- ggplot(imb_data, aes(x = score, fill = label)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c(Negative = "#90CAF9", Positive = "#EF5350")) +
+  labs(title = "Score Distribution by Class",
+       subtitle = "Much overlap makes separation hard",
+       x = "Model Score", y = "Density", fill = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+
+grid.arrange(p2, p1, ncol = 2,
+             top = "Precision-Recall Analysis on Imbalanced Data (95% Negative, 5% Positive)")
+```
+
+> **Key insight:** On the PR curve, the baseline for a random model is a horizontal line at the proportion of positives (here 5%), not 50% as in ROC. This makes PR curves more sensitive to improvements on the rare class.
+
+---
+
+# Part 6: Log Loss — Measuring Confidence
+
+## 6.1 What Is Log Loss?
+
+Accuracy and F1 only look at the final prediction (class label). **Log Loss** (also called **cross-entropy loss**) looks at the *probability* the model assigns to each prediction. A model that says "90% positive" and is right is better than one that says "51% positive" and is right.
+
+$$\text{Log Loss} = -\frac{1}{n}\sum_{i=1}^{n}\left[y_i \log(p_i) + (1-y_i)\log(1-p_i)\right]$$
+
+> **Plain English:** Log loss measures how *confident* and *correct* the model is. If the model says "I'm 99% sure this is positive" and it's actually positive, the log loss is very small (good). If the model says "I'm 99% sure" and it's wrong, the log loss is **huge** (bad). It heavily penalises confident wrong answers.
+
+```{r log-loss-curve, fig.height=4.5, fig.width=8}
+p_seq <- seq(0.01, 0.99, by = 0.01)
+ll_correct  <- -log(p_seq)
+ll_wrong    <- -log(1 - p_seq)
+
+ll_df <- data.frame(
+  Probability = rep(p_seq, 2),
+  LogLoss     = c(ll_correct, ll_wrong),
+  Case        = rep(c("Actual = 1 (correct if high prob)",
+                       "Actual = 0 (wrong if high prob)"), each = length(p_seq))
+)
+
+ggplot(ll_df, aes(x = Probability, y = LogLoss, color = Case)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = c("#4CAF50", "#E53935")) +
+  labs(
+    title = "Log Loss Penalty: Confident and Wrong = Catastrophic",
+    subtitle = "The penalty explodes when the model is confident but incorrect",
+    x = "Predicted Probability for Class 1",
+    y = "Log Loss (lower is better)",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+```{r log-loss-examples, echo=FALSE}
+ll_examples <- data.frame(
+  Scenario = c(
+    "Predicts 0.99 for actual 1",
+    "Predicts 0.51 for actual 1",
+    "Predicts 0.01 for actual 1",
+    "Predicts 0.99 for actual 0"
+  ),
+  `Log Loss` = c(
+    round(-log(0.99), 4),
+    round(-log(0.51), 4),
+    round(-log(0.01), 4),
+    round(-log(1 - 0.99), 4)
+  ),
+  Verdict = c("Excellent — confident and right",
+              "Mediocre — barely confident",
+              "Terrible — confidently wrong",
+              "Terrible — confidently wrong")
+)
+knitr::kable(ll_examples, col.names = c("Scenario", "Log Loss", "Verdict"),
+             caption = "Log Loss Penalises Confident Mistakes Severely") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+---
+
+# Part 7: Regression Metrics — When the Output Is a Number
+
+So far we've focused on **classification** (predicting a category). When predicting a **continuous number** (house prices, temperatures, stock returns), we need different metrics.
+
+## 7.1 Setting Up a Regression Example
+
+We'll use the `Boston` housing dataset (from `MASS`) to predict median home values.
+
+```{r regression-setup}
+data(Boston)
+set.seed(MASTER_SEED)
+
+train_idx_r <- sample(1:nrow(Boston), floor(0.7 * nrow(Boston)))
+boston_train <- Boston[train_idx_r, ]
+boston_test  <- Boston[-train_idx_r, ]
+
+lm_model <- lm(medv ~ ., data = boston_train)
+rf_reg   <- randomForest(medv ~ ., data = boston_train, ntree = 200)
+
+pred_lm <- predict(lm_model, boston_test)
+pred_rf <- predict(rf_reg,   boston_test)
+actual  <- boston_test$medv
+```
+
+## 7.2 Mean Absolute Error (MAE)
+
+$$\text{MAE} = \frac{1}{n}\sum_{i=1}^{n}|y_i - \hat{y}_i|$$
+
+> **Plain English:** On average, how far off is each prediction? MAE treats all errors equally — a $1 error and a $10 error contribute proportionally.
+
+## 7.3 Mean Squared Error (MSE) and Root Mean Squared Error (RMSE)
+
+$$\text{MSE} = \frac{1}{n}\sum_{i=1}^{n}(y_i - \hat{y}_i)^2 \qquad \text{RMSE} = \sqrt{\text{MSE}}$$
+
+> **Plain English:** RMSE is like MAE but it **punishes large errors more heavily** because it squares them first. A prediction that's off by $10 contributes 100 to the sum, while one off by $1 contributes only 1. RMSE is in the same units as the target variable, making it interpretable ("the model is off by about $X on average").
+
+## 7.4 $R^2$ (R-Squared) — How Much Variance Does the Model Explain?
+
+$$R^2 = 1 - \frac{\sum(y_i - \hat{y}_i)^2}{\sum(y_i - \bar{y})^2} = 1 - \frac{\text{MSE(model)}}{\text{MSE(baseline)}}$$
+
+> **Plain English:** $R^2$ compares your model to the **dumbest possible baseline** — a model that always predicts the average value. If $R^2 = 0.80$, your model explains 80% of the variation in the data. The remaining 20% is unexplained noise.
+>
+> - $R^2 = 1.0$: Perfect predictions (too good — likely overfitting)
+> - $R^2 = 0.0$: Model is no better than predicting the mean
+> - $R^2 < 0.0$: Model is **worse** than predicting the mean (something is very wrong)
+
+## 7.5 Adjusted $R^2$ — Penalising Unnecessary Features
+
+$$R^2_{adj} = 1 - \frac{(1 - R^2)(n - 1)}{n - k - 1}$$
+
+where $k$ is the number of features and $n$ is the number of samples.
+
+> **Plain English:** Regular $R^2$ always goes up (or stays the same) when you add more features, even useless ones. Adjusted $R^2$ penalises you for adding features that don't help. If a new feature doesn't improve the model enough, adjusted $R^2$ will go **down**.
+
+## 7.6 Computing All Regression Metrics
+
+```{r regression-metrics}
+compute_regression_metrics <- function(actual, predicted, k = NULL, model_name = "Model") {
+  residuals <- actual - predicted
+  mae  <- mean(abs(residuals))
+  mse  <- mean(residuals^2)
+  rmse <- sqrt(mse)
+  ss_res <- sum(residuals^2)
+  ss_tot <- sum((actual - mean(actual))^2)
+  r2 <- 1 - ss_res / ss_tot
+  n <- length(actual)
+
+  adj_r2 <- if (!is.null(k)) {
+    1 - ((1 - r2) * (n - 1)) / (n - k - 1)
+  } else {
+    NA
+  }
+
+  data.frame(Model = model_name, MAE = mae, RMSE = rmse, R2 = r2, Adj_R2 = adj_r2)
+}
+
+metrics_lm <- compute_regression_metrics(actual, pred_lm, k = ncol(Boston) - 1,
+                                          model_name = "Linear Regression")
+metrics_rf <- compute_regression_metrics(actual, pred_rf, k = ncol(Boston) - 1,
+                                          model_name = "Random Forest")
+
+reg_comparison <- bind_rows(metrics_lm, metrics_rf)
+
+knitr::kable(reg_comparison, digits = 3,
+             col.names = c("Model", "MAE ($k)", "RMSE ($k)", "R²", "Adjusted R²"),
+             caption = "Regression Metrics: Linear Regression vs. Random Forest on Boston Housing") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+## 7.7 Visualising Regression Predictions
+
+```{r regression-viz, fig.height=5, fig.width=11}
+reg_plot_df <- data.frame(
+  Actual    = rep(actual, 2),
+  Predicted = c(pred_lm, pred_rf),
+  Model     = rep(c("Linear Regression", "Random Forest"), each = length(actual))
+)
+
+ggplot(reg_plot_df, aes(x = Actual, y = Predicted, color = Model)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+  facet_wrap(~ Model) +
+  scale_color_manual(values = c("Linear Regression" = "#1976D2", "Random Forest" = "#4CAF50")) +
+  labs(
+    title = "Actual vs. Predicted Values — Regression Models",
+    subtitle = "Points on the dashed line = perfect predictions; further away = larger errors",
+    x = "Actual Median Home Value ($1,000s)",
+    y = "Predicted Value ($1,000s)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+```{r residual-plot, fig.height=5, fig.width=11}
+residual_df <- data.frame(
+  Predicted = c(pred_lm, pred_rf),
+  Residual  = c(actual - pred_lm, actual - pred_rf),
+  Model     = rep(c("Linear Regression", "Random Forest"), each = length(actual))
+)
+
+ggplot(residual_df, aes(x = Predicted, y = Residual, color = Model)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+  facet_wrap(~ Model) +
+  scale_color_manual(values = c("Linear Regression" = "#1976D2", "Random Forest" = "#4CAF50")) +
+  labs(
+    title = "Residual Plot — Do the Errors Show Any Pattern?",
+    subtitle = "Residuals should scatter randomly around zero; patterns indicate model problems",
+    x = "Predicted Value ($1,000s)",
+    y = "Residual (Actual - Predicted)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+```
+
+> **How to read the residual plot:** If the residuals scatter randomly around zero (like a cloud), the model is doing well. If you see a **funnel shape** (errors grow with predicted value) or a **curve**, the model is missing a pattern in the data.
+
+---
+
+# Part 8: Cross-Validation — Testing Your Model Honestly
+
+## 8.1 The Problem: Overfitting
+
+A model that memorises the training data perfectly will fail on new, unseen data. This is called **overfitting**. But how do we detect it before we deploy the model?
+
+> **Analogy:** Imagine a student who memorises all the answers in a practice test but can't solve new problems on the final exam. Cross-validation is like giving the student *multiple* different practice tests to see if they truly understand the material.
+
+## 8.2 How K-Fold Cross-Validation Works
+
+Instead of a single train/test split, K-fold divides the data into **K equally-sized folds**:
+
+1. Train on folds 1–(K-1), test on fold K.
+2. Train on folds 1–(K-2) and K, test on fold (K-1).
+3. Repeat until every fold has been the test set exactly once.
+4. Average the scores.
+
+```{r kfold-diagram, echo=FALSE, fig.height=4, fig.width=10}
+k <- 5
+fold_data <- expand.grid(Fold = 1:k, Iteration = 1:k)
+fold_data$Role <- ifelse(fold_data$Fold == fold_data$Iteration, "Test", "Train")
+
+ggplot(fold_data, aes(x = factor(Fold), y = factor(Iteration, levels = k:1), fill = Role)) +
+  geom_tile(color = "white", linewidth = 1.5) +
+  geom_text(aes(label = Role), fontface = "bold", size = 3.5) +
+  scale_fill_manual(values = c(Train = "#A5D6A7", Test = "#EF9A9A")) +
+  labs(
+    title = sprintf("%d-Fold Cross-Validation: Every Fold Gets a Turn as the Test Set", k),
+    subtitle = "Green = training data, Red = test data. Each row is one iteration.",
+    x = "Data Fold", y = "Iteration"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none",
+        panel.grid = element_blank()) +
+  coord_equal()
+```
+
+## 8.3 Cross-Validation in Practice
+
+```{r cross-validation}
+set.seed(MASTER_SEED)
+
+ctrl <- trainControl(method = "cv", number = 10)
+
+cv_rf <- train(Species ~ ., data = iris, method = "rf",
+               trControl = ctrl, metric = "Accuracy",
+               tuneGrid = data.frame(mtry = 2))
+
+cv_dt <- train(Species ~ ., data = iris, method = "rpart",
+               trControl = ctrl, metric = "Accuracy",
+               tuneGrid = data.frame(cp = 0.01))
+
+cv_nb <- train(Species ~ ., data = iris, method = "naive_bayes",
+               trControl = ctrl, metric = "Accuracy")
+
+cat("=== 10-Fold Cross-Validation Results ===\n\n")
+cat(sprintf("Random Forest:  Mean Accuracy = %.3f (SD = %.3f)\n",
+            max(cv_rf$results$Accuracy), cv_rf$results$AccuracySD[which.max(cv_rf$results$Accuracy)]))
+cat(sprintf("Decision Tree:  Mean Accuracy = %.3f (SD = %.3f)\n",
+            max(cv_dt$results$Accuracy), cv_dt$results$AccuracySD[which.max(cv_dt$results$Accuracy)]))
+cat(sprintf("Naive Bayes:    Mean Accuracy = %.3f (SD = %.3f)\n",
+            max(cv_nb$results$Accuracy), cv_nb$results$AccuracySD[which.max(cv_nb$results$Accuracy)]))
+```
+
+## 8.4 Visualising Cross-Validation Results
+
+```{r cv-comparison-viz, fig.height=5, fig.width=9}
+cv_results <- resamples(list(
+  `Random Forest` = cv_rf,
+  `Decision Tree` = cv_dt,
+  `Naive Bayes`   = cv_nb
+))
+
+cv_df <- cv_results$values %>%
+  pivot_longer(cols = -Resample, names_to = "Model_Metric", values_to = "Value") %>%
+  dplyr::filter(grepl("Accuracy", Model_Metric)) %>%
+  mutate(Model = gsub("~Accuracy", "", Model_Metric))
+
+ggplot(cv_df, aes(x = Model, y = Value, fill = Model)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16) +
+  geom_jitter(width = 0.15, alpha = 0.5, size = 2) +
+  scale_fill_manual(values = c("Random Forest" = "#4CAF50",
+                                "Decision Tree" = "#FF9800",
+                                "Naive Bayes" = "#9C27B0")) +
+  scale_y_continuous(labels = percent) +
+  labs(
+    title = "10-Fold Cross-Validation: Accuracy Distribution",
+    subtitle = "Each point is one fold's accuracy; the box shows the spread across folds",
+    x = NULL, y = "Accuracy"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+> **What to look for:**
+>
+> 1. **High median accuracy** — the model is generally good.
+> 2. **Narrow box** (low variance) — the model performs consistently across folds.
+> 3. **No outliers** — no fold causes a dramatic performance drop.
+>
+> A model with slightly lower accuracy but tighter spread is often more trustworthy than one with higher accuracy and wild swings.
+
+## 8.5 Choosing K: The Bias-Variance Trade-Off
+
+| K Value | Bias | Variance | Computation | When to Use |
+|:--------|:-----|:---------|:------------|:------------|
+| K = 2 | High (only 50% of data for training) | Low | Fast | Quick sanity check |
+| K = 5 | Moderate | Moderate | Moderate | Large datasets |
+| **K = 10** | **Low** | **Moderate** | **Moderate** | **Most common — recommended default** |
+| K = n (LOOCV) | Very low | Very high | Very slow | Tiny datasets (< 100 samples) |
+
+---
+
+# Part 9: Putting It All Together — A Complete Evaluation Pipeline
+
+## 9.1 Multi-Model Classification Comparison
+
+Let's do a thorough side-by-side comparison of all four classifiers on the multiclass Iris dataset.
+
+```{r full-comparison}
+set.seed(MASTER_SEED)
+
+dt_full  <- rpart(Species ~ ., data = iris_train, method = "class")
+rf_full  <- randomForest(Species ~ ., data = iris_train, ntree = 200)
+nb_full  <- naiveBayes(Species ~ ., data = iris_train)
+svm_full <- svm(Species ~ ., data = iris_train, kernel = "radial")
+
+model_info <- list(
+  list(name = "Decision Tree",  pred = predict(dt_full,  iris_test, type = "class")),
+  list(name = "Random Forest",  pred = predict(rf_full,  iris_test)),
+  list(name = "Naive Bayes",    pred = predict(nb_full,  iris_test)),
+  list(name = "SVM (RBF)",      pred = predict(svm_full, iris_test))
+)
+
+comparison_list <- lapply(model_info, function(item) {
+  cm <- confusionMatrix(item$pred, iris_test$Species)
+  data.frame(
+    Model     = item$name,
+    Accuracy  = cm$overall["Accuracy"],
+    Kappa     = cm$overall["Kappa"],
+    Mean_F1   = mean(cm$byClass[, "F1"], na.rm = TRUE),
+    Mean_Prec = mean(cm$byClass[, "Pos Pred Value"], na.rm = TRUE),
+    Mean_Rec  = mean(cm$byClass[, "Sensitivity"], na.rm = TRUE)
+  )
+})
+
+comparison_df <- do.call(rbind, comparison_list)
+rownames(comparison_df) <- NULL
+
+knitr::kable(comparison_df, digits = 3,
+             col.names = c("Model", "Accuracy", "Kappa", "Mean F1",
+                           "Mean Precision", "Mean Recall"),
+             caption = "Multi-Model Classification Comparison on Iris Test Set") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+## 9.2 Visualising Multiple Confusion Matrices
+
+```{r multi-cm-viz, fig.height=5, fig.width=12}
+cm_plots <- lapply(model_info, function(item) {
+  name <- item$name
+  pred <- item$pred
+  cm   <- confusionMatrix(pred, iris_test$Species)
+  cm_df <- as.data.frame(cm$table)
+  names(cm_df) <- c("Predicted", "Actual", "Count")
+
+  ggplot(cm_df, aes(x = Actual, y = Predicted, fill = Count)) +
+    geom_tile(color = "white", linewidth = 1) +
+    geom_text(aes(label = Count), size = 5, fontface = "bold") +
+    scale_fill_gradient(low = "white", high = "#1976D2") +
+    labs(title = name,
+         subtitle = sprintf("Accuracy: %.1f%%", cm$overall["Accuracy"] * 100)) +
+    theme_minimal(base_size = 9) +
+    theme(legend.position = "none", plot.title = element_text(face = "bold")) +
+    coord_equal()
+})
+
+do.call(grid.arrange, c(cm_plots, ncol = 4,
+  top = "Confusion Matrices: Four Models on Iris Test Set"))
+```
+
+## 9.3 Radar Chart: Model Strengths at a Glance
+
+```{r radar-comparison, fig.height=6, fig.width=9}
+radar_df <- comparison_df %>%
+  dplyr::select(Model, Accuracy, Mean_F1, Mean_Prec, Mean_Rec, Kappa) %>%
+  pivot_longer(-Model, names_to = "Metric", values_to = "Value") %>%
+  mutate(Metric = case_when(
+    Metric == "Accuracy"  ~ "Accuracy",
+    Metric == "Mean_F1"   ~ "F1 Score",
+    Metric == "Mean_Prec" ~ "Precision",
+    Metric == "Mean_Rec"  ~ "Recall",
+    Metric == "Kappa"     ~ "Kappa"
+  ))
+
+ggplot(radar_df, aes(x = Metric, y = Value, group = Model, color = Model)) +
+  geom_polygon(fill = NA, linewidth = 1) +
+  geom_point(size = 3) +
+  coord_polar() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25),
+                     labels = percent) +
+  scale_color_manual(values = c("Decision Tree" = "#FF9800", "Random Forest" = "#4CAF50",
+                                 "Naive Bayes" = "#9C27B0", "SVM (RBF)" = "#2196F3")) +
+  labs(
+    title = "Model Comparison Radar Chart",
+    subtitle = "Larger area = better overall performance across multiple metrics",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(size = 10, face = "bold"))
+```
+
+---
+
+# Part 10: Summary of All Metrics
+
+```{r metrics-summary-table, echo=FALSE}
+all_metrics <- data.frame(
+  Metric = c(
+    "Accuracy",
+    "Precision",
+    "Recall (Sensitivity)",
+    "Specificity",
+    "F1 Score",
+    "AUC-ROC",
+    "Log Loss",
+    "MAE",
+    "MSE",
+    "RMSE",
+    "R-Squared",
+    "Adjusted R-Squared"
+  ),
+  Type = c(rep("Classification", 7), rep("Regression", 5)),
+  `What It Measures` = c(
+    "Fraction of all predictions that are correct",
+    "Of predicted positives, how many are truly positive?",
+    "Of actual positives, how many did we catch?",
+    "Of actual negatives, how many did we correctly identify?",
+    "Harmonic mean of precision and recall — one balanced number",
+    "How well the model separates classes across all thresholds",
+    "How confident and correct the probability predictions are",
+    "Average absolute distance between predictions and actuals",
+    "Average squared distance — penalises large errors more",
+    "Square root of MSE — same units as the target",
+    "Fraction of variance explained compared to the mean baseline",
+    "R² penalised for the number of features used"
+  ),
+  `Good Value` = c(
+    "Close to 1 (but beware class imbalance!)",
+    "Close to 1 — few false alarms",
+    "Close to 1 — few missed positives",
+    "Close to 1 — few false alarms on negatives",
+    "Close to 1 — both precision and recall are high",
+    "Close to 1 (0.5 = random, > 0.9 = excellent)",
+    "Close to 0 (lower is better)",
+    "Close to 0 (lower is better)",
+    "Close to 0 (lower is better)",
+    "Close to 0 (lower is better)",
+    "Close to 1 (0 = no better than mean, 1 = perfect)",
+    "Close to 1 and should not drop much from R²"
+  )
+)
+
+knitr::kable(all_metrics,
+  col.names = c("Metric", "Type", "What It Measures", "Good Value"),
+  caption = "Complete Reference: Model Evaluation Metrics") %>%
+  kableExtra::kable_styling(full_width = TRUE, position = "center") %>%
+  kableExtra::pack_rows("Classification Metrics", 1, 7) %>%
+  kableExtra::pack_rows("Regression Metrics", 8, 12)
+```
+
+---
+
+# Knowledge Check
+
+<details>
+<summary>**Question 1:** A model has 95% accuracy on a dataset where 95% of the samples are class A. Is this model useful? Explain.</summary>
+**Answer:** Not necessarily. A model that *always predicts class A* would also achieve 95% accuracy. This is the **accuracy paradox**. The model might be completely ignoring class B. You should check recall for class B, the F1 score, or the confusion matrix to see if the model detects class B at all. AUC-ROC would also reveal whether the model has any discriminative power.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 2:** You're building a cancer screening model. Would you prioritise precision or recall? Why?</summary>
+**Answer:** **Recall** (sensitivity). In cancer screening, missing a patient who has cancer (False Negative) is far worse than sending a healthy person for additional tests (False Positive). High recall ensures we catch as many true cancer cases as possible, even if it means some false alarms. You could use an F2 score ($\beta = 2$) to formally weight recall more heavily than precision.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 3:** Model A has an AUC of 0.95 and Model B has an AUC of 0.85. Is Model A always better?</summary>
+**Answer:** Not necessarily. AUC measures performance across *all* thresholds. At the **specific threshold** you plan to use in production, Model B might actually outperform Model A. Also, if your data is highly imbalanced, the **Precision-Recall AUC** might be a more informative metric. Always look at the full ROC/PR curve, not just the AUC number.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 4:** What's the difference between MAE and RMSE? When would you prefer one over the other?</summary>
+**Answer:** Both measure prediction error, but they treat large errors differently:
+
+- **MAE** treats all errors equally — a $1 error and a $10 error contribute proportionally.
+- **RMSE** squares errors before averaging, so a $10 error contributes **100 times** as much as a $1 error.
+
+Use **MAE** when all errors are equally bad (e.g., estimating delivery times). Use **RMSE** when large errors are disproportionately worse than small ones (e.g., predicting structural loads where a big miss could be catastrophic).
+</details>
+
+<br>
+
+<details>
+<summary>**Question 5:** Why is 10-fold cross-validation generally preferred over a single train/test split?</summary>
+**Answer:** A single train/test split is subject to **luck** — the particular random split might give an optimistic or pessimistic estimate. Cross-validation:
+
+1. Uses **every data point** for both training and testing (no waste).
+2. Gives you **10 different accuracy estimates**, so you can see the **spread** (variance).
+3. Reduces **selection bias** — the result doesn't depend on which 30% happened to be the test set.
+4. K=10 is a good balance between low bias (enough training data) and manageable variance.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 6:** Your model's $R^2$ is 0.92 on the training set but 0.45 on the test set. What's happening?</summary>
+**Answer:** The model is **overfitting**. It has memorised the training data (high training $R^2$) but cannot generalise to new data (low test $R^2$). The gap of 0.47 between training and test $R^2$ is a red flag. Possible fixes:
+
+- Use **cross-validation** to detect this earlier.
+- **Simplify** the model (fewer features, less depth, more regularisation).
+- Get **more training data** if possible.
+- Use **regularisation** techniques (Ridge, Lasso) for linear models.
+</details>
+
+---
+
+# Summary
+
+Model evaluation is not about finding one magic number — it's about building a **complete picture** of how your model performs.
+
+**Key takeaways:**
+
+1. **Accuracy alone is dangerous** with imbalanced classes. Always check precision, recall, and F1.
+2. **Precision** answers: "When the model says yes, can I trust it?" **Recall** answers: "Of all the real positives, how many did we find?"
+3. The **ROC curve and AUC** give a threshold-independent view of classifier quality.
+4. **Log Loss** rewards confident correct predictions and heavily punishes confident mistakes.
+5. For regression, use **RMSE** for its sensitivity to large errors, **MAE** for equal treatment of all errors, and **$R^2$** to compare against the baseline of predicting the mean.
+6. **Cross-validation** is your best defence against overfitting — use it every time.
+
+> *"All models are wrong, but some are useful."* — George Box
+>
+> Model evaluation helps you figure out **how useful** your model actually is.
+
+---
+
+# References
+
+[1] Analytics Vidhya, "12 Important Model Evaluation Metrics for Machine Learning Everyone Should Know," 2019 (Updated 2026). [Online]. Available: https://www.analyticsvidhya.com/blog/2019/08/11-important-model-evaluation-error-metrics/
+
+[2] scikit-learn developers, "3.4. Metrics and scoring: quantifying the quality of predictions," *scikit-learn 1.8.0 documentation*, 2026. [Online]. Available: https://scikit-learn.org/stable/modules/model_evaluation.html
+
+[3] M. Kuhn, "Building Predictive Models in R Using the caret Package," *Journal of Statistical Software*, vol. 28, no. 5, 2008.
+
+[4] T. Fawcett, "An Introduction to ROC Analysis," *Pattern Recognition Letters*, vol. 27, no. 8, pp. 861–874, 2006.
+
+[5] D. M. W. Powers, "Evaluation: From Precision, Recall and F-Measure to ROC, Informedness, Markedness and Correlation," *Journal of Machine Learning Technologies*, vol. 2, no. 1, pp. 37–63, 2011.
+
+[6] X. Robin, N. Turck, A. Hainard, N. Tiberti, F. Lisacek, J.-C. Sanchez, and M. Müller, "pROC: An open-source package for R and S+ to analyze and compare ROC curves," *BMC Bioinformatics*, vol. 12, p. 77, 2011.
+
+[7] A. Field, J. Miles, and Z. Field, *Discovering Statistics Using R*. London: SAGE Publications, 2012.
+
+[8] Z. Huang, "seedhash: Deterministic Seed Generation from String Inputs Using MD5 Hashing," R package, 2026. [Online]. Available: https://github.com/roozbeh412/seedhash
