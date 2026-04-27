@@ -33,9 +33,9 @@ Quick links to every week. Click **📄 Tutorial** to open the live HTML, or **�
 | 05   | Regression                                      | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week05/Week05-SVM-Tutorial.html)          | [📂 Folder](Week05/) |
 | 06   | Support Vector Machines                         | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week06/Week06-NaiveBayes-Tutorial.html)   | [📂 Folder](Week06/) |
 | 07   | Probabilistic Learning & Classification Metrics | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week07/Week07-UnsupervisedLearning-Tutorial.html)| [📂 Folder](Week07/) |
-| 08   | Unsupervised Learning                           | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week08/) |
-| 09   | Preprocessing & Feature Selection               | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week09/) |
-| 10   | Feature Engineering & Dimensionality Reduction  | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week10/) |
+| 08   | Unsupervised Learning                           | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week08/Week08-FeatureEngineering-Tutorial.html)  | [📂 Folder](Week08/) |
+| 09   | Preprocessing & Feature Selection               | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html)  | [📂 Folder](Week09/) |
+| 10   | Feature Engineering & Dimensionality Reduction  | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html) | [📂 Folder](Week10/) |
 | 11   | Model Evaluation & Selection                    | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week11/) |
 | 12   | Advanced Ensemble Methods                       | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week12/) |
 | 13   | Introduction to Neural Networks                 | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week13/) |
