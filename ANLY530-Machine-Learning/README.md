@@ -27,7 +27,7 @@ Quick links to every week. Click **📄 Tutorial** to open the live HTML, or **�
 | Week | Topic                                           | Tutorial                                                                                                             | Source            |
 | ---- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | 01   | Introduction to Machine Learning                | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week01/01_Intro_to_Machine_Learning.html) | [📂 Folder](Week01/) |
-| 02   | Python & R for Machine Learning                 | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week02/) |
+| 02   | Python & R for Machine Learning                 | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week02/Week02-DecisionTrees-Tutorial.html)| [📂 Folder](Week02/) |
 | 03   | Decision Trees                                  | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week03/) |
 | 04   | Random Forests & Ensemble Methods               | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week04/) |
 | 05   | Regression                                      | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week05/) |
