@@ -1,0 +1,839 @@
+---
+title: "Week 09: Dimensionality Reduction — PCA, Factor Analysis & LDA"
+author: "Roozbeh Sadeghian"
+date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  fig.width = 8,
+  fig.height = 6
+)
+
+if (!requireNamespace("seedhash", quietly = TRUE)) {
+  if (!requireNamespace("pak", quietly = TRUE)) {
+    install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
+  }
+  pak::pkg_install("github::roozbeh412/seedhash/R", ask = FALSE)
+}
+```
+
+```{r seeds, include=TRUE}
+library(seedhash)
+gen <- SeedHashGenerator$new("ANLY530-Week09-DimensionalityReduction")
+MASTER_SEED <- gen$generate_seeds(1)
+set.seed(MASTER_SEED)
+```
+
+```{r seedhash-info, echo=FALSE, results='asis'}
+cat(paste0(
+  "> **Reproducibility note:** This tutorial uses the ",
+  "[seedhash](https://github.com/roozbeh412/seedhash) package to produce ",
+  "deterministic, machine-independent random seeds. The master seed for this ",
+  "document is **", MASTER_SEED, "**, derived from the key ",
+  "`ANLY530-Week09-DimensionalityReduction`."
+))
+```
+
+```{r load-packages}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  tidyverse,
+  gridExtra,
+  scales,
+  corrplot,
+  MASS,
+  psych,
+  caret,
+  knitr,
+  kableExtra
+)
+```
+
+---
+
+# Introduction
+
+Last week we learned how to clean, scale, and engineer features. But what happens when your dataset has **dozens or hundreds of features**? Many of them may be redundant, correlated, or simply noise. Training a model on all of them can be slow, overfit-prone, and hard to interpret.
+
+> "Dimensionality reduction simplifies datasets by reducing the number of input variables while preserving as much information as possible." — Encord [1]
+
+**Dimensionality reduction** compresses your feature space from many dimensions down to a few, while keeping the essential structure of the data intact. Think of it like this:
+
+- **All your features** = a thick novel with every detail.
+- **Reduced features** = a concise summary that captures all the key plot points.
+
+This week we study three fundamental techniques:
+
+| Technique | Type | Goal |
+|---|---|---|
+| **PCA** (Principal Component Analysis) | Unsupervised | Find directions of maximum **variance** |
+| **Factor Analysis (FA)** | Unsupervised | Discover **latent factors** behind correlations |
+| **LDA** (Linear Discriminant Analysis) | Supervised | Find directions that best **separate classes** |
+
+### Learning Objectives
+
+By the end of this tutorial you will be able to:
+
+1. Explain the **curse of dimensionality** and why reducing features helps.
+2. Perform PCA step by step: standardise, compute eigenvalues, project.
+3. Interpret a **scree plot** and decide how many principal components to keep.
+4. Distinguish PCA from Factor Analysis and know when each is appropriate.
+5. Apply LDA as a supervised dimensionality reduction technique.
+6. Compare PCA vs. LDA visually and understand their different objectives.
+7. Use dimensionality reduction to improve classification accuracy.
+8. Decide which technique to use based on your data and goals.
+
+### Required Packages
+
+| Package | Purpose |
+|---|---|
+| `tidyverse` | Data manipulation and `ggplot2` |
+| `gridExtra` | Multi-panel layouts |
+| `scales` | Axis formatting |
+| `corrplot` | Correlation heatmaps |
+| `MASS` | LDA implementation (`lda()`) |
+| `psych` | Factor Analysis (`fa()`) |
+| `caret` | Train/test splitting, preprocessing |
+| `knitr` / `kableExtra` | Formatted tables |
+
+---
+
+# Part 1 — The Curse of Dimensionality
+
+## Why More Features Can Be a Problem
+
+Adding more features sounds like it should always help — more information, right? Not necessarily. As the number of features grows:
+
+1. **Data becomes sparse.** In high dimensions, data points are farther apart, making it harder for distance-based algorithms (KNN, K-Means, SVM) to find meaningful patterns.
+2. **Overfitting increases.** With many features relative to observations, the model memorises training noise.
+3. **Computation slows.** More features mean bigger matrices and longer training.
+4. **Visualisation is impossible.** Humans can see at most 3 dimensions.
+
+```{r curse-demo, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED)
+
+dims <- c(2, 10, 50, 100, 500)
+avg_dists <- sapply(dims, function(d) {
+  pts <- matrix(runif(100 * d), ncol = d)
+  dists <- as.numeric(dist(pts))
+  mean(dists)
+})
+
+curse_df <- data.frame(Dimensions = dims, AvgDistance = avg_dists)
+
+p_curse <- ggplot(curse_df, aes(x = Dimensions, y = AvgDistance)) +
+  geom_line(colour = "#1976D2", linewidth = 1.2) +
+  geom_point(size = 4, colour = "#1976D2") +
+  labs(title = "The Curse of Dimensionality",
+       subtitle = "Average pairwise distance grows with dimensions — all points look equally far apart",
+       x = "Number of Dimensions", y = "Average Pairwise Distance") +
+  theme_minimal(base_size = 13)
+
+set.seed(MASTER_SEED + 1)
+d2 <- data.frame(x = runif(50), y = runif(50))
+p_2d <- ggplot(d2, aes(x, y)) +
+  geom_point(size = 2.5, colour = "#4CAF50", alpha = 0.7) +
+  labs(title = "50 Points in 2D: Dense", x = "x", y = "y") +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p_2d, p_curse, ncol = 2)
+```
+
+In 2D, 50 points fill the space nicely. But the same 50 points in 500 dimensions are hopelessly sparse — every point is roughly equidistant from every other point.
+
+---
+
+# Part 2 — Principal Component Analysis (PCA)
+
+## The Big Idea
+
+> "PCA sifts through complex, multidimensional data to find the most informative perspectives — like finding the best camera angle to photograph a sculpture." — A. Singh [2]
+
+PCA finds **new axes** (called **principal components**) that capture the maximum variance in the data. The first principal component (PC1) points in the direction of greatest spread; PC2 is perpendicular to PC1 and captures the next most spread; and so on.
+
+## 2.1 PCA Step by Step
+
+1. **Standardise** — centre and scale features so each contributes equally.
+2. **Compute the covariance matrix** — shows how features vary together.
+3. **Find eigenvectors and eigenvalues** — eigenvectors are the new axes; eigenvalues measure how much variance each axis captures.
+4. **Sort by eigenvalue** — rank components from most to least variance.
+5. **Project** — multiply the original data by the top eigenvectors to get the reduced dataset.
+
+### A 2D Example
+
+```{r pca-2d-data}
+set.seed(MASTER_SEED + 2)
+n <- 150
+x1 <- rnorm(n, 0, 2)
+x2 <- 0.8 * x1 + rnorm(n, 0, 0.8)
+pca_2d <- data.frame(x1 = x1, x2 = x2)
+```
+
+```{r pca-2d-viz, fig.width=12, fig.height=5}
+pca_fit <- prcomp(pca_2d, center = TRUE, scale. = TRUE)
+pc_slopes <- pca_fit$rotation
+
+p_raw <- ggplot(pca_2d, aes(x1, x2)) +
+  geom_point(alpha = 0.5, colour = "#1976D2", size = 2) +
+  geom_abline(slope = pc_slopes[2, 1] / pc_slopes[1, 1], intercept = 0,
+              colour = "#E53935", linewidth = 1.2, linetype = "solid") +
+  geom_abline(slope = pc_slopes[2, 2] / pc_slopes[1, 2], intercept = 0,
+              colour = "#4CAF50", linewidth = 1.2, linetype = "dashed") +
+  annotate("text", x = 3.5, y = 2.5, label = "PC1", colour = "#E53935", size = 5, fontface = "bold") +
+  annotate("text", x = -2, y = 2, label = "PC2", colour = "#4CAF50", size = 5, fontface = "bold") +
+  labs(title = "Original Data with Principal Components",
+       x = "Feature 1 (standardised)", y = "Feature 2 (standardised)") +
+  coord_fixed() +
+  theme_minimal(base_size = 13)
+
+pca_scores <- as.data.frame(pca_fit$x)
+p_proj <- ggplot(pca_scores, aes(PC1, PC2)) +
+  geom_point(alpha = 0.5, colour = "#9C27B0", size = 2) +
+  geom_hline(yintercept = 0, colour = "#E53935", linewidth = 0.8) +
+  geom_vline(xintercept = 0, colour = "#4CAF50", linewidth = 0.8) +
+  labs(title = "Data Projected onto PCs",
+       x = "PC1 (most variance)", y = "PC2 (least variance)") +
+  coord_fixed() +
+  theme_minimal(base_size = 13)
+
+grid.arrange(p_raw, p_proj, ncol = 2)
+```
+
+The red line (PC1) aligns with the direction of greatest spread. After projection, the axes are **uncorrelated** — all the covariance has been rotated away.
+
+## 2.2 How Much Variance Does Each PC Capture?
+
+```{r pca-variance-2d, fig.width=8, fig.height=5}
+var_explained <- summary(pca_fit)$importance
+var_df <- data.frame(
+  PC = c("PC1", "PC2"),
+  Variance = var_explained[2, ] * 100,
+  Cumulative = var_explained[3, ] * 100
+)
+
+ggplot(var_df, aes(x = PC, y = Variance)) +
+  geom_col(fill = "#1976D2", alpha = 0.8, width = 0.5) +
+  geom_text(aes(label = paste0(round(Variance, 1), "%")), vjust = -0.5, size = 5) +
+  geom_line(aes(y = Cumulative, group = 1), colour = "#E53935", linewidth = 1.2) +
+  geom_point(aes(y = Cumulative), colour = "#E53935", size = 4) +
+  scale_y_continuous(limits = c(0, 110)) +
+  labs(title = "Variance Explained by Each PC",
+       x = "", y = "Variance (%)") +
+  theme_minimal(base_size = 13)
+```
+
+PC1 captures the lion's share of the variance. If we kept only PC1, we would reduce from 2 features to 1 while retaining most of the information.
+
+---
+
+# Part 3 — PCA on the Iris Dataset
+
+Let us apply PCA to a real dataset. The Iris data has 4 features — we will compress it to 2 for visualisation.
+
+```{r iris-pca}
+data(iris)
+iris_scaled <- scale(iris[, 1:4])
+pca_iris <- prcomp(iris_scaled)
+```
+
+## 3.1 Scree Plot — How Many PCs to Keep?
+
+A **scree plot** shows the eigenvalue (or variance) for each PC. Look for the "elbow" where the curve flattens — that is where additional PCs add little value.
+
+```{r scree-plot, fig.width=8, fig.height=5}
+eig_vals <- pca_iris$sdev^2
+scree_df <- data.frame(
+  PC = paste0("PC", 1:4),
+  Eigenvalue = eig_vals,
+  VarPercent = eig_vals / sum(eig_vals) * 100,
+  Cumulative = cumsum(eig_vals / sum(eig_vals) * 100)
+)
+
+ggplot(scree_df, aes(x = PC, y = VarPercent)) +
+  geom_col(fill = "#1976D2", alpha = 0.8, width = 0.5) +
+  geom_text(aes(label = paste0(round(VarPercent, 1), "%")), vjust = -0.5, size = 4.5) +
+  geom_line(aes(y = Cumulative, group = 1), colour = "#E53935", linewidth = 1.2) +
+  geom_point(aes(y = Cumulative), colour = "#E53935", size = 4) +
+  geom_text(aes(y = Cumulative, label = paste0(round(Cumulative, 1), "%")),
+            vjust = -1, colour = "#E53935", size = 3.5) +
+  scale_y_continuous(limits = c(0, 110)) +
+  labs(title = "Scree Plot — Iris PCA",
+       subtitle = "PC1 + PC2 capture 95.8% of total variance",
+       x = "Principal Component", y = "Variance Explained (%)") +
+  theme_minimal(base_size = 13)
+```
+
+Two components capture over 95% of the total variance, so projecting from 4D to 2D loses very little information.
+
+## 3.2 PCA Projection Coloured by Species
+
+```{r iris-pca-scatter, fig.width=10, fig.height=6}
+pca_iris_df <- data.frame(
+  PC1 = pca_iris$x[, 1],
+  PC2 = pca_iris$x[, 2],
+  Species = iris$Species
+)
+
+ggplot(pca_iris_df, aes(PC1, PC2, colour = Species)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "Iris Dataset Projected onto First Two PCs",
+       subtitle = "4 features compressed to 2 — species still clearly separate",
+       x = paste0("PC1 (", round(scree_df$VarPercent[1], 1), "%)"),
+       y = paste0("PC2 (", round(scree_df$VarPercent[2], 1), "%)")) +
+  theme_minimal(base_size = 13)
+```
+
+Even after reducing from 4 dimensions to 2, the three species form distinct clusters. *Setosa* is perfectly separated; *versicolor* and *virginica* show slight overlap.
+
+## 3.3 Loadings — Which Features Drive Each PC?
+
+```{r loadings-viz, fig.width=10, fig.height=5}
+loadings_df <- as.data.frame(pca_iris$rotation[, 1:2])
+loadings_df$Feature <- rownames(loadings_df)
+
+loadings_long <- loadings_df %>%
+  pivot_longer(cols = c(PC1, PC2), names_to = "PC", values_to = "Loading")
+
+ggplot(loadings_long, aes(x = Feature, y = Loading, fill = PC)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  scale_fill_manual(values = c("#1976D2", "#E53935")) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "PCA Loadings — Which Features Contribute to Each PC",
+       x = "", y = "Loading Weight") +
+  theme_minimal(base_size = 13) +
+  coord_flip()
+```
+
+**PC1** is driven by all four features (especially petal measurements), representing overall flower size. **PC2** is dominated by sepal width, capturing the shape contrast between sepals and petals.
+
+## 3.4 Biplot — Features + Observations Together
+
+```{r biplot, fig.width=10, fig.height=7}
+arrow_scale <- 3
+arrows_df <- data.frame(
+  xend = pca_iris$rotation[, 1] * arrow_scale,
+  yend = pca_iris$rotation[, 2] * arrow_scale,
+  Feature = rownames(pca_iris$rotation)
+)
+
+ggplot(pca_iris_df, aes(PC1, PC2)) +
+  geom_point(aes(colour = Species), size = 2, alpha = 0.5) +
+  geom_segment(data = arrows_df,
+               aes(x = 0, y = 0, xend = xend, yend = yend),
+               arrow = arrow(length = unit(0.2, "cm")),
+               colour = "black", linewidth = 0.8) +
+  geom_text(data = arrows_df, aes(x = xend * 1.15, y = yend * 1.15, label = Feature),
+            size = 4, fontface = "bold") +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "PCA Biplot — Features as Arrows, Observations as Points",
+       x = "PC1", y = "PC2") +
+  theme_minimal(base_size = 13)
+```
+
+Arrows show feature directions. Features pointing the same way are positively correlated. The length of the arrow indicates how much that feature contributes to the PCs.
+
+---
+
+# Part 4 — Factor Analysis (FA)
+
+## PCA vs. Factor Analysis
+
+PCA and Factor Analysis look similar, but they have a fundamentally different goal:
+
+| | PCA | Factor Analysis |
+|---|---|---|
+| **Goal** | Reduce dimensions by maximising variance | Discover **latent (hidden) factors** that explain correlations |
+| **Model** | No underlying model — just a rotation | Assumes observed variables are caused by unobserved factors + noise |
+| **Unique variance** | Lumped in with shared variance | Separated: shared (communality) vs. unique (specificity) |
+| **Use case** | Data compression, visualisation | Understanding structure, psychometrics, surveys |
+
+Think of it this way: PCA asks *"What are the best summary axes?"* while Factor Analysis asks *"What hidden causes produce the correlations we see?"*
+
+## 4.1 Factor Analysis on Iris
+
+```{r fa-iris}
+fa_iris <- psych::fa(iris[, 1:4], nfactors = 2, rotate = "varimax", fm = "ml")
+print(fa_iris$loadings, cutoff = 0.3)
+```
+
+```{r fa-loadings-viz, fig.width=10, fig.height=5}
+fa_load <- as.data.frame(unclass(fa_iris$loadings))
+fa_load$Feature <- rownames(fa_load)
+
+fa_long <- fa_load %>%
+  pivot_longer(cols = starts_with("ML"), names_to = "Factor", values_to = "Loading")
+
+ggplot(fa_long, aes(x = Feature, y = Loading, fill = Factor)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  scale_fill_manual(values = c("#1976D2", "#E53935")) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Factor Analysis Loadings (Varimax Rotation)",
+       subtitle = "Each factor represents a latent dimension underlying the observed features",
+       x = "", y = "Loading") +
+  theme_minimal(base_size = 13) +
+  coord_flip()
+```
+
+After varimax rotation, the factors become more interpretable: one factor loads on petal features (a "petal size" factor), and the other loads on sepal features (a "sepal shape" factor).
+
+## 4.2 Communality — How Well Is Each Variable Explained?
+
+**Communality** is the proportion of each variable's variance explained by the factors. High communality means the factors capture that variable well.
+
+```{r communality-viz, fig.width=8, fig.height=5}
+comm_df <- data.frame(
+  Feature = names(fa_iris$communality),
+  Communality = fa_iris$communality,
+  Uniqueness = fa_iris$uniquenesses
+)
+
+ggplot(comm_df, aes(x = reorder(Feature, Communality), y = Communality)) +
+  geom_col(fill = "#4CAF50", alpha = 0.8) +
+  geom_text(aes(label = round(Communality, 2)), hjust = -0.2, size = 4.5) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0, 1.1)) +
+  labs(title = "Communality — How Well Factors Explain Each Variable",
+       subtitle = "Higher = more variance captured by factors",
+       x = "", y = "Communality") +
+  theme_minimal(base_size = 13)
+```
+
+## 4.3 Choosing the Number of Factors
+
+The **parallel analysis** method compares actual eigenvalues to eigenvalues from random data. Keep factors whose eigenvalues exceed the random baseline.
+
+```{r parallel-analysis, fig.width=8, fig.height=5}
+pa <- psych::fa.parallel(iris[, 1:4], fa = "fa", fm = "ml", main = "Parallel Analysis — Iris")
+```
+
+The analysis suggests keeping factors whose actual eigenvalues (blue line) exceed the simulated ones (red dashes).
+
+---
+
+# Part 5 — Linear Discriminant Analysis (LDA)
+
+## The Big Idea
+
+PCA is **unsupervised** — it ignores class labels and just chases variance. LDA is **supervised** — it uses class labels to find projections that **maximise the separation between classes**.
+
+> "LDA aims to find a linear combination of features that best separates different classes, unlike PCA which optimises for variance regardless of class labels." — Encord [1]
+
+Think of it this way:
+
+- **PCA** asks: *"Where does the data spread the most?"*
+- **LDA** asks: *"Where are the classes most different?"*
+
+## 5.1 How LDA Works
+
+LDA finds projection directions that:
+
+1. **Maximise between-class scatter** ($S_B$) — push class centres apart.
+2. **Minimise within-class scatter** ($S_W$) — keep each class tight.
+
+The optimal projection maximises:
+
+$$J(\mathbf{w}) = \frac{\mathbf{w}^T S_B \mathbf{w}}{\mathbf{w}^T S_W \mathbf{w}}$$
+
+For K classes, LDA produces at most $K - 1$ discriminant axes (for Iris: 3 classes → 2 axes).
+
+## 5.2 LDA on Iris
+
+```{r lda-iris}
+lda_iris <- MASS::lda(Species ~ ., data = iris)
+lda_proj <- predict(lda_iris)$x
+lda_df <- data.frame(LD1 = lda_proj[, 1], LD2 = lda_proj[, 2], Species = iris$Species)
+```
+
+```{r lda-scatter, fig.width=10, fig.height=6}
+ggplot(lda_df, aes(LD1, LD2, colour = Species)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "LDA Projection of Iris — Maximises Class Separation",
+       x = "LD1", y = "LD2") +
+  theme_minimal(base_size = 13)
+```
+
+Compare this to the PCA scatter: LDA pulls the classes further apart because it explicitly optimises for class separation.
+
+---
+
+# Part 6 — PCA vs. LDA: Head-to-Head
+
+```{r pca-vs-lda, fig.width=14, fig.height=6}
+p_pca <- ggplot(pca_iris_df, aes(PC1, PC2, colour = Species)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "PCA (Unsupervised)",
+       subtitle = "Maximises variance — ignores labels",
+       x = "PC1", y = "PC2") +
+  theme_minimal(base_size = 13)
+
+p_lda <- ggplot(lda_df, aes(LD1, LD2, colour = Species)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "LDA (Supervised)",
+       subtitle = "Maximises class separation — uses labels",
+       x = "LD1", y = "LD2") +
+  theme_minimal(base_size = 13)
+
+grid.arrange(p_pca, p_lda, ncol = 2)
+```
+
+Both methods separate *setosa* perfectly, but LDA achieves cleaner separation between *versicolor* and *virginica* because it uses the species labels to guide the projection.
+
+### When Should You Use PCA vs. LDA?
+
+```{r pca-vs-lda-table}
+compare_df <- data.frame(
+  Property = c(
+    "Supervised?",
+    "Objective",
+    "Max components",
+    "Assumes class labels?",
+    "Assumes normality?",
+    "Best for",
+    "Output"
+  ),
+  PCA = c(
+    "No",
+    "Maximise variance",
+    "min(n_features, n_samples)",
+    "No",
+    "No (but works better with roughly normal data)",
+    "Exploratory analysis, visualisation, compression",
+    "Principal Components (uncorrelated)"
+  ),
+  LDA = c(
+    "Yes",
+    "Maximise class separation",
+    "K - 1 (number of classes minus 1)",
+    "Yes",
+    "Yes (multivariate normality assumed)",
+    "Classification preprocessing, reducing features for a classifier",
+    "Linear Discriminants"
+  ),
+  check.names = FALSE
+)
+
+kable(compare_df, caption = "PCA vs. LDA") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+---
+
+# Part 7 — Impact on Classification
+
+Does dimensionality reduction actually help models? Let us train classifiers with and without PCA/LDA preprocessing.
+
+```{r classification-impact, fig.width=10, fig.height=5}
+set.seed(MASTER_SEED + 10)
+idx <- createDataPartition(iris$Species, p = 0.7, list = FALSE)
+
+train_raw <- iris[idx, ]
+test_raw  <- iris[-idx, ]
+
+pp <- preProcess(train_raw[, 1:4], method = c("center", "scale"))
+train_sc <- predict(pp, train_raw[, 1:4])
+test_sc  <- predict(pp, test_raw[, 1:4])
+
+pca_train <- prcomp(train_sc)
+train_pca2 <- data.frame(pca_train$x[, 1:2], Species = train_raw$Species)
+test_pca2  <- data.frame(predict(pca_train, test_sc)[, 1:2], Species = test_raw$Species)
+
+lda_fit <- MASS::lda(Species ~ ., data = train_raw)
+train_lda <- data.frame(predict(lda_fit, train_raw)$x, Species = train_raw$Species)
+test_lda  <- data.frame(predict(lda_fit, test_raw)$x, Species = test_raw$Species)
+
+library(randomForest)
+rf_all  <- randomForest(Species ~ ., data = cbind(train_sc, Species = train_raw$Species), ntree = 200)
+rf_pca  <- randomForest(Species ~ ., data = train_pca2, ntree = 200)
+rf_lda  <- randomForest(Species ~ ., data = train_lda, ntree = 200)
+
+acc_all <- mean(predict(rf_all, cbind(test_sc, Species = test_raw$Species)) == test_raw$Species)
+acc_pca <- mean(predict(rf_pca, test_pca2) == test_raw$Species)
+acc_lda <- mean(predict(rf_lda, test_lda) == test_raw$Species)
+
+acc_results <- data.frame(
+  Method = c("All 4 Features", "PCA (2 PCs)", "LDA (2 LDs)"),
+  Accuracy = round(c(acc_all, acc_pca, acc_lda) * 100, 1)
+)
+
+ggplot(acc_results, aes(x = reorder(Method, Accuracy), y = Accuracy, fill = Method)) +
+  geom_col(alpha = 0.8, width = 0.5) +
+  geom_text(aes(label = paste0(Accuracy, "%")), hjust = -0.2, size = 5) +
+  coord_flip() +
+  scale_fill_manual(values = c("#1976D2", "#4CAF50", "#E53935")) +
+  scale_y_continuous(limits = c(0, 110)) +
+  labs(title = "Random Forest Accuracy: All Features vs. PCA vs. LDA",
+       x = "", y = "Test Accuracy (%)") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+Even with half the features, PCA and LDA maintain strong accuracy. LDA often edges ahead because it uses class information during projection.
+
+---
+
+# Part 8 — PCA for Data Visualisation (Higher Dimensions)
+
+PCA shines when you need to **visualise** datasets with many features. Let us try it on the `mtcars` dataset (11 features).
+
+```{r mtcars-pca, fig.width=14, fig.height=5}
+data(mtcars)
+mtcars_scaled <- scale(mtcars)
+pca_mtcars <- prcomp(mtcars_scaled)
+
+mt_scree <- data.frame(
+  PC = paste0("PC", 1:ncol(mtcars)),
+  VarPct = pca_mtcars$sdev^2 / sum(pca_mtcars$sdev^2) * 100,
+  Cum = cumsum(pca_mtcars$sdev^2 / sum(pca_mtcars$sdev^2) * 100)
+)
+mt_scree$PC <- factor(mt_scree$PC, levels = mt_scree$PC)
+
+p_mt_scree <- ggplot(mt_scree, aes(x = PC, y = VarPct)) +
+  geom_col(fill = "#1976D2", alpha = 0.8) +
+  geom_line(aes(y = Cum, group = 1), colour = "#E53935", linewidth = 1) +
+  geom_point(aes(y = Cum), colour = "#E53935", size = 3) +
+  labs(title = "Scree Plot — mtcars (11 Features)", x = "", y = "Variance (%)") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+mt_pca_df <- data.frame(
+  PC1 = pca_mtcars$x[, 1], PC2 = pca_mtcars$x[, 2],
+  cyl = factor(mtcars$cyl), car = rownames(mtcars)
+)
+
+p_mt_scatter <- ggplot(mt_pca_df, aes(PC1, PC2, colour = cyl)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_text(aes(label = car), vjust = -0.8, size = 2.5, check_overlap = TRUE) +
+  scale_colour_manual(values = c("#1976D2", "#E53935", "#4CAF50")) +
+  labs(title = "mtcars in 2D (PCA)", colour = "Cylinders") +
+  theme_minimal(base_size = 11)
+
+grid.arrange(p_mt_scree, p_mt_scatter, ncol = 2)
+```
+
+From 11 features we extract 2 PCs that capture ~84% of the variance. Cars naturally cluster by cylinder count — a pattern invisible in the original 11-dimensional space.
+
+---
+
+# Part 9 — Reconstruction Error
+
+When we throw away PCs, we lose some information. **Reconstruction error** measures how much.
+
+```{r reconstruction, fig.width=12, fig.height=5}
+n_pcs <- 1:4
+recon_errors <- sapply(n_pcs, function(k) {
+  recon <- pca_iris$x[, 1:k, drop = FALSE] %*% t(pca_iris$rotation[, 1:k, drop = FALSE])
+  mean((iris_scaled - recon)^2)
+})
+
+recon_df <- data.frame(PCs = n_pcs, MSE = recon_errors)
+
+p_recon <- ggplot(recon_df, aes(PCs, MSE)) +
+  geom_line(colour = "#E53935", linewidth = 1.2) +
+  geom_point(size = 4, colour = "#E53935") +
+  scale_x_continuous(breaks = 1:4) +
+  labs(title = "Reconstruction Error vs. Number of PCs (Iris)",
+       subtitle = "More PCs = closer to original data",
+       x = "Number of PCs Kept", y = "Mean Squared Error") +
+  theme_minimal(base_size = 13)
+
+recon_2pc <- pca_iris$x[, 1:2] %*% t(pca_iris$rotation[, 1:2])
+recon_iris <- as.data.frame(recon_2pc)
+names(recon_iris) <- names(iris)[1:4]
+
+p_orig <- ggplot(as.data.frame(iris_scaled), aes(Petal.Length, Petal.Width)) +
+  geom_point(colour = "#1976D2", alpha = 0.5, size = 2) +
+  labs(title = "Original (4D)", x = "Petal.Length", y = "Petal.Width") +
+  theme_minimal(base_size = 11)
+
+p_recon_pts <- ggplot(recon_iris, aes(Petal.Length, Petal.Width)) +
+  geom_point(colour = "#4CAF50", alpha = 0.5, size = 2) +
+  labs(title = "Reconstructed (2 PCs)", x = "Petal.Length", y = "Petal.Width") +
+  theme_minimal(base_size = 11)
+
+grid.arrange(p_recon, arrangeGrob(p_orig, p_recon_pts, ncol = 2), ncol = 2)
+```
+
+With 2 PCs the reconstruction is almost perfect — confirming that 2 components capture the essential structure of the 4D data.
+
+---
+
+# Part 10 — Practical Decision Guide
+
+```{r decision-guide}
+guide_df <- data.frame(
+  Scenario = c(
+    "Visualise high-dimensional data",
+    "Compress features before training",
+    "Understand hidden factors behind survey answers",
+    "Maximise class separation before classification",
+    "Data has no labels",
+    "Data has labels and you want fewer features",
+    "Need interpretable factors",
+    "Need uncorrelated features"
+  ),
+  Technique = c(
+    "PCA",
+    "PCA",
+    "Factor Analysis",
+    "LDA",
+    "PCA or FA",
+    "LDA",
+    "Factor Analysis (with rotation)",
+    "PCA"
+  )
+)
+
+kable(guide_df, caption = "Which Technique to Use?") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  column_spec(2, bold = TRUE)
+```
+
+---
+
+# Knowledge Check
+
+<details>
+<summary><strong>Q1: What is the curse of dimensionality?</strong></summary>
+
+As the number of features increases, data becomes increasingly sparse — points are farther apart, distances become meaningless, models overfit, and computation slows down. Dimensionality reduction combats this by compressing features while preserving essential structure.
+
+</details>
+
+<details>
+<summary><strong>Q2: What does PCA maximise and how does it find principal components?</strong></summary>
+
+PCA maximises **variance**. It computes the covariance matrix of the standardised data, finds its eigenvectors (directions of maximum spread) and eigenvalues (amount of variance in each direction), and projects the data onto the top eigenvectors. The first PC captures the most variance, the second captures the next most, and so on.
+
+</details>
+
+<details>
+<summary><strong>Q3: How do you decide how many principal components to keep?</strong></summary>
+
+Use a **scree plot** — plot eigenvalues or variance percentages and look for the "elbow" where the curve flattens. A common rule of thumb is to keep enough PCs to capture 90-95% of total variance. **Parallel analysis** (comparing to random data) is a more formal alternative.
+
+</details>
+
+<details>
+<summary><strong>Q4: What is the key difference between PCA and Factor Analysis?</strong></summary>
+
+**PCA** is a data reduction technique that finds linear combinations maximising total variance — it has no underlying model. **Factor Analysis** assumes observed variables are generated by a smaller number of unobserved *latent factors* plus noise. FA separates shared variance (communality) from unique variance (specificity), while PCA lumps them together.
+
+</details>
+
+<details>
+<summary><strong>Q5: Why does LDA often produce better class separation than PCA?</strong></summary>
+
+PCA is unsupervised — it finds directions of maximum variance regardless of class labels. The direction of greatest variance might not separate classes at all. LDA is supervised — it explicitly maximises the ratio of between-class scatter to within-class scatter, ensuring the projection is optimised for class discrimination.
+
+</details>
+
+<details>
+<summary><strong>Q6: Can LDA produce more components than PCA?</strong></summary>
+
+No — LDA is more limited. For K classes, LDA produces at most $K - 1$ discriminant axes (e.g., 3 classes → 2 LDs). PCA can produce up to $\min(n, p)$ components (the smaller of number of samples or features). So PCA is more flexible for pure dimensionality reduction, while LDA is specialised for classification.
+
+</details>
+
+---
+
+# Summary
+
+```{r summary-table}
+summary_df <- data.frame(
+  Concept = c(
+    "Curse of Dimensionality",
+    "PCA",
+    "Eigenvalues / Eigenvectors",
+    "Scree Plot",
+    "Loadings",
+    "Biplot",
+    "Factor Analysis",
+    "Communality",
+    "Varimax Rotation",
+    "LDA",
+    "Between/Within-Class Scatter",
+    "Reconstruction Error"
+  ),
+  `Key Idea` = c(
+    "More features → sparser data, overfitting, slower training",
+    "Find uncorrelated axes that maximise variance",
+    "Directions (eigenvectors) and magnitudes (eigenvalues) of spread",
+    "Plot eigenvalues to find the elbow — how many PCs to keep",
+    "Weights showing each feature's contribution to each PC",
+    "Features (arrows) + observations (points) in PC space",
+    "Discover latent factors that explain observed correlations",
+    "Proportion of a variable's variance explained by factors",
+    "Rotate factors to make loadings more interpretable",
+    "Supervised projection maximising class separation",
+    "S_B (push classes apart) / S_W (keep classes tight)",
+    "MSE between original and reconstructed data from k PCs"
+  ),
+  `R Implementation` = c(
+    "Distance grows with dimensions",
+    "prcomp(scale(data))",
+    "pca$sdev^2, pca$rotation",
+    "Plot eigenvalues vs. PC index",
+    "pca$rotation",
+    "ggplot with arrows + points",
+    "psych::fa(data, nfactors, rotate)",
+    "fa$communality",
+    "rotate = 'varimax' in fa()",
+    "MASS::lda(class ~ ., data)",
+    "Solved via eigendecomposition of S_W^{-1} S_B",
+    "mean((original - reconstructed)^2)"
+  ),
+  check.names = FALSE
+)
+
+kable(summary_df, caption = "Week 09 Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+---
+
+# References
+
+[1] S. Oladele, "Top 12 Dimensionality Reduction Techniques for Machine Learning," *Encord*, Mar. 2024. [Online]. Available: https://encord.com/blog/dimentionality-reduction-techniques-machine-learning/
+
+[2] A. Singh, "Mastering Feature Extraction: PCA, t-SNE, and LDA in Machine Learning Part-1," *Medium*, Oct. 2024. [Online]. Available: https://medium.com/@abhaysingh71711/mastering-feature-extraction-pca-t-sne-and-lda-in-machine-learning-part-1-0da5c3d978ad
+
+[3] R. Sadeghian, "Lecture 10 — Feature Engineering Part 2," *ANLY 530 — Machine Learning*, Harrisburg University, 2023.
+
+[4] A. Geron, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*, 2nd ed. Sebastopol, CA: O'Reilly Media, 2019, ch. 8.
+
+[5] I. T. Jolliffe, *Principal Component Analysis*, 2nd ed. New York, NY: Springer, 2002.
+
+[6] W. R. Dillon and M. Goldstein, *Multivariate Analysis: Methods and Applications*. New York, NY: Wiley, 1984.
+
+[7] R. A. Fisher, "The Use of Multiple Measurements in Taxonomic Problems," *Annals of Eugenics*, vol. 7, no. 2, pp. 179–188, 1936.
+
+[8] seedhash R package. [Online]. Available: https://github.com/roozbeh412/seedhash
+
+---
+
+<div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 10px; margin-top: 30px;">
+<strong>ANLY 530 — Principles & Applications of Machine Learning</strong><br/>
+<em>Harrisburg University</em><br/><br/>
+Next week: Neural Networks & Deep Learning
+</div>
