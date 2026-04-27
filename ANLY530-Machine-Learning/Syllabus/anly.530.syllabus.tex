@@ -1,0 +1,1033 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[
+  10pt,
+]{article}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage[]{mathpazo}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{longtable,booktabs,array}
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+% preamble.tex — LaTeX preamble for ANLY 530 syllabus
+
+% ----- Fonts & encoding -------------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ----- Page geometry ----------------------------------------------------------
+\usepackage{geometry}
+\geometry{margin=1in, top=1.2in, bottom=1in}
+
+% ----- Colours ----------------------------------------------------------------
+\usepackage{xcolor}
+\definecolor{huBlue}{RGB}{0, 51, 102}
+\definecolor{boxbg}{RGB}{240, 245, 255}
+\definecolor{boxborder}{RGB}{0, 51, 102}
+
+% ----- Hyperlinks -------------------------------------------------------------
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks = true,
+  urlcolor   = huBlue,
+  linkcolor  = huBlue,
+  citecolor  = huBlue
+}
+
+% ----- Graphics --------------------------------------------------------------
+\usepackage{graphicx}
+
+% ----- Tables -----------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+
+% ----- Coloured callout boxes (blackbox environment used in schedule) ---------
+\usepackage{framed}
+
+\newenvironment{blackbox}{%
+  \def\FrameCommand{%
+    \hspace{1pt}%
+    {\color{boxborder}\vrule width 2pt}%
+    {\color{boxbg}\vrule width 4pt}%
+    \colorbox{boxbg}%
+  }%
+  \MakeFramed{\advance\hsize-\width\FrameRestore}%
+  \noindent\ignorespaces
+}{%
+  \endMakeFramed
+}
+
+% ----- Section spacing --------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+% ----- List spacing -----------------------------------------------------------
+% enumitem not available in this TinyTeX install; use paralist instead or rely
+% on LaTeX defaults
+\setlength{\itemsep}{1pt}
+\setlength{\parskip}{2pt}
+\linespread{1.05}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\usepackage{lastpage}
+\fancyhead[RO,RE]{\thepage\ of \pageref{LastPage}}
+\fancyfoot[LO,LE]{\changefont Adapted from The Course Syllabus, A Learning-Centered Approach, 2nd Edition, Judith Grunert OBrien, Barbara J. Millis, Margaret W. Cohen. ISBN 978-0-470-60549-3. Available as an E-Book from Wiley at https://www.wiley.com}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{colortbl}
+\usepackage{pdflscape}
+\usepackage{tabu}
+\usepackage{threeparttable}
+\usepackage{threeparttablex}
+\usepackage[normalem]{ulem}
+\usepackage{makecell}
+\usepackage{xcolor}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={ANLY 530 --- Principles \& Applications of Machine Learning},
+  pdfauthor={Roozbeh Sdeghian, PhD},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\title{ANLY 530 --- Principles \& Applications of Machine Learning}
+\author{Roozbeh Sdeghian, PhD}
+\date{Late Spring 2026}
+
+\begin{document}
+\maketitle
+
+\newcommand{\changefont}{%
+    \fontsize{8}{8}\selectfont
+}
+\addtolength{\headheight}{1.0cm} 
+\pagestyle{fancyplain} 
+\rhead{\thepage\ of \pageref{LastPage}}
+\lhead{\includegraphics[height=0.8cm]{logo.png}} 
+\renewcommand{\headrulewidth}{0pt} 
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyfoot[C]{}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\textbf{Instructor} & Roozbeh Sadeghian, PhD \\
+\textbf{Email} &
+\href{mailto:sadeghian@harrisburgu.edu}{\nolinkurl{sadeghian@harrisburgu.edu}} \\
+\textbf{Office Hours} & By appointment --- email to schedule at least 24
+hours in advance \\
+\textbf{Class Meeting} & Thursdays, 8:30 PM -- 10:00 PM (Eastern) \\
+\textbf{Format} & Synchronous Online (MS-Teams / Virtual Classroom) \\
+\textbf{Dates} & March 14, 2026 -- June 18, 2026 (14 weeks) \\
+\textbf{Credits} & 3.00 \textbar{} Reference: 30501 \textbar{} Dept:
+ANLY \\
+\end{longtable}
+
+\section*{Welcome}\label{welcome}
+\addcontentsline{toc}{section}{Welcome}
+
+Welcome to \textbf{ANLY 530 --- Principles \& Applications of Machine
+Learning}! This course is your gateway to one of the most transformative
+fields in modern technology. Over the next 14 weeks, you will move from
+understanding \emph{what} machine learning is to actually
+\emph{building} ML systems that solve real problems.
+
+You do not need to be a mathematics expert to succeed here. What you
+need is curiosity, persistence, and a willingness to write code and make
+mistakes. We will work through concepts together in class, and
+assignments are designed to give you hands-on practice at each step of
+the journey.
+
+By the end of the course, you will have a portfolio of ML projects to
+show employers, a working knowledge of the most important algorithms in
+the field, and the confidence to pick up new ML tools on your own.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section*{Course Description}\label{course-description}
+\addcontentsline{toc}{section}{Course Description}
+
+This course introduces students to machine learning. It provides
+students with the cognitive, mathematical, and analytical foundation
+required for machine learning, including topics from data mining,
+pattern recognition, and supervised and unsupervised learning. Although
+it may be taken as a stand-alone course, it also prepares students for
+the complex, higher-level topics covered in Principles and Applications
+of Deep Learning.
+
+This course aims to connect classroom learning to professional practice.
+Assignments designated with an asterisk (*) are linked to the student's
+current or future employment, enabling real-world application of the
+material covered in class.
+
+\section*{Learning Objectives}\label{learning-objectives}
+\addcontentsline{toc}{section}{Learning Objectives}
+
+At the end of this course, students will be able to:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Develop models that integrate state-of-the-art machine learning
+  techniques with fundamental principles of cognitive science and
+  mathematics.
+\item
+  Build sophisticated analytics solutions that apply machine learning to
+  real-life problems.
+\item
+  \textbf{Communicate findings about machine learning clearly --- within
+  teams, across organizations, and to external stakeholders.}
+\item
+  \textbf{Evaluate} the strengths and limitations of different ML
+  algorithms and select the appropriate method for a given problem.
+\item
+  \textbf{Build reproducible, well-documented machine learning
+  pipelines} using R and Python.
+\end{enumerate}
+
+\section*{Texts and Programs}\label{texts-and-programs}
+\addcontentsline{toc}{section}{Texts and Programs}
+
+\subsection{Required Textbook}\label{required-textbook}
+
+\textbf{Hands-On Machine Learning with Scikit-Learn, Keras, and
+TensorFlow} (2nd Ed.) Aurelien Geron --- O'Reilly Media, 2019
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Free online access} (Harrisburg University credentials
+  required):
+  \url{https://learning.oreilly.com/library/view/hands-on-machine-learning/9798341607972/}
+  Log in with your @harrisburgu.edu account at learning.oreilly.com.
+\end{itemize}
+
+\subsection{Required Software (free)}\label{required-software-free}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{R} and \textbf{RStudio Desktop}:
+  \url{https://www.r-project.org/} \textbar{}
+  \url{https://posit.co/downloads/}
+\item
+  \textbf{Python 3} via \textbf{Anaconda}:
+  \url{https://www.anaconda.com/} --- includes Jupyter Notebook, Spyder,
+  and all scientific libraries
+\item
+  Use the R \texttt{reticulate} package to knit RMarkdown reports that
+  include Python code chunks
+\end{enumerate}
+
+\subsection{Supplementary References (optional, all free
+online)}\label{supplementary-references-optional-all-free-online}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{An Introduction to Statistical Learning with Applications in R}
+  (2nd Ed.) --- James et al.: \url{https://www.statlearning.com/}
+\item
+  \emph{Pattern Recognition and Machine Learning} --- Bishop:
+  \url{https://www.microsoft.com/en-us/research/uploads/prod/2006/01/Bishop-Pattern-Recognition-and-Machine-Learning-2006.pdf}
+\item
+  \emph{Linear Algebra} --- Hefferon:
+  \url{http://joshua.smcvt.edu/linearalgebra/}
+\end{itemize}
+
+\section*{Course Policies}\label{course-policies}
+\addcontentsline{toc}{section}{Course Policies}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \textbf{Canvas:} All course materials, assignments, grades, and
+  announcements are posted on Canvas. Check Canvas at least twice per
+  week. Technical difficulties with Canvas are not an excuse for late
+  submissions --- plan ahead.
+\item
+  \textbf{Attendance \& Participation:} Live Thursday sessions are
+  required. Active participation (asking questions, contributing to
+  discussion) forms part of your grade. If you must miss a class, notify
+  the instructor \emph{in advance}. More than two unexcused absences
+  will result in a deduction from your participation grade.
+\item
+  \textbf{Assignments:} There are 8 assignments, each covering topics
+  from recent lectures. Key policies:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Submit as a \textbf{compiled report} (HTML or PDF rendered from
+    RMarkdown or Jupyter Notebook). Raw, uncompiled code files
+    (\texttt{.R}, \texttt{.py}, \texttt{.ipynb} without output) will not
+    be graded and will receive a zero.
+  \item
+    Each assignment is graded once. Resubmissions are not accepted.
+  \item
+    \textbf{Late penalty:} 10\% of your earned score is deducted for
+    each calendar day late. A score of 85 submitted 2 days late becomes
+    85 -- 2(8.5) = \textbf{68}. Submissions more than 10 calendar days
+    late receive a \textbf{zero}.
+  \item
+    All work must be your own. Identical or near-identical answers from
+    multiple students, or answers copied verbatim from online sources,
+    will receive a zero and may be referred for academic integrity
+    review.
+  \item
+    Cite all sources in APA format (\url{https://www.apa.org/}).
+  \item
+    If you fall behind or face personal difficulties, reach out
+    \emph{early} --- the late policy cannot be waived retroactively, but
+    early communication may open other options.
+  \end{itemize}
+\item
+  \textbf{Assigned Readings:} Complete readings \emph{before} class.
+  Many ML concepts require multiple encounters to fully understand.
+  Re-reading after class and working through code examples from the book
+  is strongly encouraged.
+\item
+  \textbf{Email:} Use your official \texttt{@harrisburgu.edu} email for
+  all course communications. Emails from personal addresses will not
+  receive a response. Expect a reply within 48 hours on business days.
+\item
+  \textbf{Use of Artificial Intelligence (AI) Tools:} You may use AI
+  assistants (e.g., ChatGPT, GitHub Copilot, Claude) to \textbf{help you
+  understand} concepts, debug code, or improve writing clarity. However:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \textbf{You are responsible for every line of code and every claim
+    in your submission.} If an AI generates incorrect code or a wrong
+    conclusion and you submit it, the error is yours.
+  \item
+    \textbf{Do not submit AI-generated text as your own written
+    analysis.} Explain results in your own words.
+  \item
+    \textbf{Disclose AI use:} Include a brief note (one sentence is
+    fine) at the end of any submission where you used an AI tool,
+    describing how you used it.
+  \item
+    Submitting AI output verbatim without attribution is treated as
+    plagiarism under the academic integrity policy.
+  \end{itemize}
+\end{enumerate}
+
+\section*{HU Core Competencies}\label{hu-core-competencies}
+\addcontentsline{toc}{section}{HU Core Competencies}
+
+At the conclusion of this course, students will have demonstrated:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \textbf{Critical Thinking \& Problem Solving} --- Identifying
+  problems, gathering and evaluating evidence, considering alternatives,
+  and implementing solutions.
+\item
+  \textbf{Communication} --- Expressing technical ideas clearly in
+  written, oral, and visual formats using appropriate tools and
+  resources.
+\item
+  \textbf{Teamwork \& Collaboration} --- Engaging with peers to deepen
+  understanding through discussion and shared learning.
+\item
+  \textbf{Information Technology} --- Making effective use of
+  computational tools, data science platforms, and information
+  resources.
+\end{enumerate}
+
+\section*{Statement of Academic
+Integrity}\label{statement-of-academic-integrity}
+\addcontentsline{toc}{section}{Statement of Academic Integrity}
+
+Academic integrity is the pursuit of scholarly activity free from fraud
+and deception. Academic dishonesty includes, but is not limited to:
+cheating, plagiarism, fabrication of information or citations,
+facilitating dishonesty by others, submitting another person's work,
+submitting previously used work without disclosure, or tampering with
+other students' academic work. Violations will be thoroughly
+investigated, and punitive action taken where warranted.
+
+\emph{Honor Code:} We as members of the Harrisburg University community
+pledge not to cheat, plagiarize, steal, or lie in matters related to
+academic work. We honor and uphold the \emph{HU Honor Code}.
+
+\section*{Final Project}\label{final-project}
+\addcontentsline{toc}{section}{Final Project}
+
+The final project is your opportunity to apply everything covered in the
+course to a real dataset of your choosing. You will go through the full
+machine learning workflow: problem framing, data acquisition and
+cleaning, exploratory analysis, model building, evaluation, and
+communication of results.
+
+\subsection{Deliverables}\label{deliverables}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Deliverable
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Format
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Due
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\textbf{Project Proposal} & 1-page Word or PDF document submitted to
+Canvas & Week 3 (Mar 28) \\
+\textbf{Final Project Report} & MS Word document using the \textbf{IEEE
+Access template} (provided on Canvas); 8 pages minimum, excluding
+references & Week 14 (Jun 18) \\
+\textbf{Final Project Presentation} & 15-minute recorded video with
+slides (uploaded to Canvas) & Week 14 (Jun 18) \\
+\end{longtable}
+
+\subsection{Project Proposal}\label{project-proposal}
+
+By \textbf{Week 3 (March 28, 2026)}, each student or team must submit a
+\textbf{one-page project proposal} to Canvas. The proposal is your
+opportunity to think through the problem before diving into data and
+code. It should address all five of the following points:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \textbf{Dataset and Source} --- Identify the dataset you plan to use
+  and provide its source (URL, repository name, or institution). Explain
+  the size and structure of the data (number of rows, columns, variable
+  types).
+\item
+  \textbf{Related Work} --- Briefly review what others have done with
+  this dataset or on this type of problem. Cite at least two references.
+  Explain how your approach is different or what new angle you are
+  exploring.
+\item
+  \textbf{Proposed Methods} --- Describe the machine learning methods
+  you plan to apply. You do not need to commit to a final list, but you
+  should name at least two algorithms and explain why they are
+  appropriate for your problem.
+\item
+  \textbf{Why Machine Learning?} --- Explain why machine learning is a
+  suitable approach for this problem. What makes it hard to solve with
+  simple rules or statistics alone?
+\item
+  \textbf{Team Responsibilities} --- If working in a team, list each
+  member and their planned responsibilities (e.g., data cleaning,
+  modeling, report writing, presentation). If working individually,
+  state that this is a solo project.
+\end{enumerate}
+
+\begin{quote}
+The proposal is graded on completeness and clarity, not on whether your
+final project matches it exactly. You may change your dataset or methods
+after submission --- just notify the instructor.
+\end{quote}
+
+\subsection{Requirements}\label{requirements}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Citations:} The report must include \textbf{at least 12
+  references} cited in IEEE format. References should include primary
+  sources such as peer-reviewed journal articles, conference papers, and
+  authoritative textbooks. Blog posts and Wikipedia do not count toward
+  the minimum.
+\item
+  \textbf{Dataset:} Use a publicly available, real-world dataset (e.g.,
+  from Kaggle, UCI ML Repository, data.gov, or your workplace).
+  Synthetic or toy datasets (like \texttt{iris}) are not acceptable for
+  the final project.
+\item
+  \textbf{Scope:} Apply at least \textbf{two different ML algorithms}
+  and compare their performance rigorously.
+\item
+  \textbf{Evaluation:} Report appropriate metrics (accuracy, RMSE,
+  AUC-ROC, etc.) and explain what they mean in plain language.
+\item
+  \textbf{Report format:} Use the \textbf{IEEE Access MS Word template}
+  (file: \texttt{Access-Template-2024.docx}, available on Canvas). Your
+  report must be \textbf{at least 8 pages} of content, not counting the
+  references section. Structure your report following the IEEE Access
+  conventions: Abstract, Introduction, Related Work, Methodology,
+  Results, Discussion, and Conclusion.
+\item
+  \textbf{Data Availability Statement:} Your report must include a
+  \emph{Data Availability Statement} (a standard IEEE Access
+  requirement) declaring where the dataset can be accessed. If the data
+  is publicly available, provide the URL or DOI. If the data is
+  proprietary or cannot be shared, state that clearly and explain why.
+\item
+  \textbf{Code Availability Statement:} Your report must include a
+  \emph{Code Availability Statement} stating that all code is publicly
+  available on \textbf{GitHub}. You are required to create a GitHub
+  repository for your project, push all code to it, and include the
+  repository URL in this statement. The repository must be public and
+  accessible by the submission deadline. Example statement: \emph{``All
+  code used in this study is publicly available at
+  \url{https://github.com//}\textless username\textgreater/\textless repo-name\textgreater.''}
+\item
+  \textbf{Reproducibility:} The code in your GitHub repository must run
+  cleanly from top to bottom with no errors. Include a
+  \texttt{README.md} describing the environment setup and how to
+  reproduce the results.
+\item
+  \textbf{Presentation:} Record a \textbf{15-minute video} (screen
+  capture with voiceover is fine --- tools like Zoom, OBS, or Loom all
+  work). Assume your audience is a non-technical manager. Explain your
+  problem, your approach, and your findings clearly --- minimize jargon.
+  Upload the video or a shareable link to Canvas by the deadline.
+\end{itemize}
+
+\subsection{Suggested Project
+Timeline}\label{suggested-project-timeline}
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Milestone & Recommended Completion \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Dataset selected \& problem framed & Week 5 (Apr 11) \\
+EDA and data cleaning complete & Week 8 (May 2) \\
+First model trained and evaluated & Week 10 (May 16) \\
+Model comparison and tuning complete & Week 12 (May 30) \\
+Report draft complete & Week 13 (Jun 6) \\
+Final report \& presentation & Week 14 (Jun 18) \\
+\end{longtable}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section*{Grading}\label{grading}
+\addcontentsline{toc}{section}{Grading}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3438}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2500}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4062}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Component
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Weight
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Description
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Assignments (8 total) & 60\% & 7.5\% each; best indicators of weekly
+mastery \\
+Final Project & 30\% & Report 20\%, Presentation 10\% \\
+Attendance \& Participation & 10\% & Presence, engagement, and
+discussion contributions \\
+\end{longtable}
+
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+Grade & Range & Meaning \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+A & 90.00\% and above & Excellent --- exceeds expectations \\
+B & 80.00\% -- 89.99\% & Good --- meets all expectations \\
+C & 70.00\% -- 79.99\% & Satisfactory --- meets minimum expectations \\
+F & Below 70.00\% & Failing --- does not meet minimum expectations \\
+\end{longtable}
+
+\section*{Submission Schedule}\label{submission-schedule}
+\addcontentsline{toc}{section}{Submission Schedule}
+
+All deadlines are at \textbf{11:59 PM Eastern on the date listed}. The
+10\% per day late penalty applies immediately after this deadline.
+Submissions more than 10 days late receive a zero.
+
+\begingroup\fontsize{9}{11}\selectfont
+
+\begin{longtable}[t]{llll}
+\caption{\label{tab:submission-schedule}Complete Submission Schedule --- ANLY 530 Late Spring 2026}\\
+\toprule
+Deliverable & Due Date (11:59 PM ET) & Grade Weight & Zero After\\
+\midrule
+\cellcolor[HTML]{f2f2f2}{Assignment 1 — Decision Trees} & \cellcolor[HTML]{f2f2f2}{Saturday, April 04, 2026} & \cellcolor[HTML]{f2f2f2}{60\% combined (8 assignments)} & \cellcolor[HTML]{f2f2f2}{April 14, 2026}\\
+Assignment 2 — Random Forests & Saturday, April 11, 2026 & 60\% combined (8 assignments) & April 21, 2026\\
+\cellcolor[HTML]{f2f2f2}{Assignment 3 — Regression} & \cellcolor[HTML]{f2f2f2}{Saturday, April 18, 2026} & \cellcolor[HTML]{f2f2f2}{60\% combined (8 assignments)} & \cellcolor[HTML]{f2f2f2}{April 28, 2026}\\
+Assignment 4 — Support Vector Machines & Saturday, April 25, 2026 & 60\% combined (8 assignments) & May 05, 2026\\
+\cellcolor[HTML]{f2f2f2}{Assignment 5 — Naive Bayes} & \cellcolor[HTML]{f2f2f2}{Saturday, May 02, 2026} & \cellcolor[HTML]{f2f2f2}{60\% combined (8 assignments)} & \cellcolor[HTML]{f2f2f2}{May 12, 2026}\\
+\addlinespace
+Assignment 6 — Unsupervised Learning & Saturday, May 09, 2026 & 60\% combined (8 assignments) & May 19, 2026\\
+\cellcolor[HTML]{f2f2f2}{Assignment 7 — Feature Engineering \& PCA} & \cellcolor[HTML]{f2f2f2}{Saturday, May 23, 2026} & \cellcolor[HTML]{f2f2f2}{60\% combined (8 assignments)} & \cellcolor[HTML]{f2f2f2}{June 02, 2026}\\
+Assignment 8 — Ensemble Modeling & Saturday, June 06, 2026 & 60\% combined (8 assignments) & June 16, 2026\\
+\cellcolor[HTML]{fff3cd}{\textbf{Final Project Proposal}} & \cellcolor[HTML]{fff3cd}{\textbf{Saturday, March 28, 2026}} & \cellcolor[HTML]{fff3cd}{\textbf{30\% combined (final project)}} & \cellcolor[HTML]{fff3cd}{\textbf{April 07, 2026}}\\
+\cellcolor[HTML]{fff3cd}{\textbf{Final Project Report}} & \cellcolor[HTML]{fff3cd}{\textbf{Saturday, June 13, 2026}} & \cellcolor[HTML]{fff3cd}{\textbf{30\% combined (final project)}} & \cellcolor[HTML]{fff3cd}{\textbf{June 23, 2026}}\\
+\addlinespace
+\cellcolor[HTML]{fff3cd}{\textbf{Final Project Presentation}} & \cellcolor[HTML]{fff3cd}{\textbf{Saturday, June 13, 2026}} & \cellcolor[HTML]{fff3cd}{\textbf{30\% combined (final project)}} & \cellcolor[HTML]{fff3cd}{\textbf{June 23, 2026}}\\
+\bottomrule
+\end{longtable}
+\endgroup{}
+
+\section*{Class Schedule}\label{class-schedule}
+\addcontentsline{toc}{section}{Class Schedule}
+
+The schedule below reflects the \textbf{actual Thursday class dates}
+(March 14 -- June 18, 2026). Lecture topics may shift slightly based on
+course pace; the final project deadline will not change. All materials
+and assignments will be posted on Canvas.
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 01 -- March 14, 2026}\label{week-01-march-14-2026}
+
+\end{center}
+
+\textbf{Topic:} Introduction to the Course \& Machine Learning Landscape
+
+\begin{itemize}
+\tightlist
+\item
+  Syllabus, Canvas, project overview, and assignment expectations
+\item
+  What is Machine Learning? Supervised, unsupervised, and reinforcement
+  learning
+\item
+  The ML workflow: data to model to evaluation to deployment
+\item
+  \emph{Reading:} Geron Ch. 1 --- The Machine Learning Landscape
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 02 -- March 21, 2026}\label{week-02-march-21-2026}
+
+\end{center}
+
+\textbf{Topic:} Python \& R for Machine Learning
+
+\begin{itemize}
+\tightlist
+\item
+  Installation: R, RStudio, Anaconda, Jupyter
+\item
+  Basics of Python and R: data types, control flow, functions
+\item
+  RMarkdown + reticulate for reproducible reports
+\item
+  Key libraries: NumPy, Pandas, Matplotlib, Scikit-Learn, tidyverse,
+  ggplot2
+\item
+  \emph{Reading:} Geron Ch. 2 --- End-to-End ML Project (setup sections)
+\item
+  \textbf{Start Project Proposal} (due Week 3, March 28)
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 03 -- March 28, 2026}\label{week-03-march-28-2026}
+
+\end{center}
+
+\textbf{Topic:} Decision Trees
+
+\begin{itemize}
+\tightlist
+\item
+  How decision trees split data (CART algorithm, Gini impurity, entropy)
+\item
+  Overfitting, pruning, and tree depth
+\item
+  Visualising and interpreting decision boundaries
+\item
+  \emph{Reading:} Geron Ch. 6 --- Decision Trees
+\item
+  \textbf{Start Assignment 1:} Decision Trees
+\item
+  \textbf{Project Proposal Due} (11:59 PM, March 28, 2026)
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 04 -- April 04, 2026}\label{week-04-april-04-2026}
+
+\end{center}
+
+\textbf{Topic:} Random Forests \& Ensemble Methods
+
+\begin{itemize}
+\tightlist
+\item
+  From decision trees to random forests: bagging and feature randomness
+\item
+  Feature importance
+\item
+  Brief introduction to boosting (AdaBoost, Gradient Boosting)
+\item
+  \emph{Reading:} Geron Ch. 7 --- Ensemble Learning and Random Forests
+\item
+  \textbf{Assignment 1 Due} \textbar{} \textbf{Start Assignment 2:}
+  Random Forests
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 05 -- April 11, 2026}\label{week-05-april-11-2026}
+
+\end{center}
+
+\textbf{Topic:} Regression
+
+\begin{itemize}
+\tightlist
+\item
+  Linear regression: OLS, gradient descent, cost functions
+\item
+  Polynomial regression and bias-variance tradeoff
+\item
+  Regularisation: Ridge, Lasso, ElasticNet
+\item
+  Logistic regression for classification
+\item
+  \emph{Reading:} Geron Ch. 4 --- Training Models
+\item
+  \textbf{Assignment 2 Due} \textbar{} \textbf{Start Assignment 3:}
+  Regression
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 06 -- April 18, 2026}\label{week-06-april-18-2026}
+
+\end{center}
+
+\textbf{Topic:} Support Vector Machines (SVM)
+
+\begin{itemize}
+\tightlist
+\item
+  Hard and soft margin classification
+\item
+  The kernel trick: polynomial, RBF
+\item
+  SVM for regression (SVR)
+\item
+  \emph{Reading:} Geron Ch. 5 --- Support Vector Machines
+\item
+  \textbf{Assignment 3 Due} \textbar{} \textbf{Start Assignment 4:}
+  Support Vector Machines
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 07 -- April 25, 2026}\label{week-07-april-25-2026}
+
+\end{center}
+
+\textbf{Topic:} Probabilistic Learning --- Naive Bayes \& Classification
+Metrics
+
+\begin{itemize}
+\tightlist
+\item
+  Bayes theorem and conditional probability
+\item
+  Naive Bayes classifier
+\item
+  Evaluation: confusion matrix, precision, recall, F1-score, ROC-AUC
+\item
+  \emph{Reading:} Geron Ch. 3 --- Classification
+\item
+  \textbf{Assignment 4 Due} \textbar{} \textbf{Start Assignment 5:}
+  Naive Bayes
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 08 -- May 02, 2026}\label{week-08-may-02-2026}
+
+\end{center}
+
+\textbf{Topic:} Unsupervised Learning
+
+\begin{itemize}
+\tightlist
+\item
+  Clustering: K-Means, DBSCAN, hierarchical clustering
+\item
+  Anomaly detection and density estimation
+\item
+  Gaussian Mixture Models
+\item
+  \emph{Reading:} Geron Ch. 9 --- Unsupervised Learning Techniques
+\item
+  \textbf{Assignment 5 Due} \textbar{} \textbf{Start Assignment 6:}
+  Unsupervised Learning
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 09 -- May 09, 2026}\label{week-09-may-09-2026}
+
+\end{center}
+
+\textbf{Topic:} Preprocessing \& Feature Selection
+
+\begin{itemize}
+\tightlist
+\item
+  Handling missing data, outliers, and class imbalance
+\item
+  Scaling and encoding (StandardScaler, OneHotEncoder)
+\item
+  Feature selection: filter, wrapper, and embedded methods
+\item
+  Scikit-Learn Pipelines
+\item
+  \emph{Reading:} Geron Ch. 2 (pipeline sections) \textbar{} Ch. 13
+  (preprocessing)
+\item
+  \textbf{Assignment 6 Due}
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 10 -- May 16, 2026}\label{week-10-may-16-2026}
+
+\end{center}
+
+\textbf{Topic:} Feature Engineering \& Dimensionality Reduction
+
+\begin{itemize}
+\tightlist
+\item
+  Feature creation, interaction terms, and binning
+\item
+  PCA: principal components and explained variance
+\item
+  t-SNE for visualisation
+\item
+  \emph{Reading:} Geron Ch. 8 --- Dimensionality Reduction
+\item
+  \textbf{Start Assignment 7:} Feature Engineering \& PCA
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 11 -- May 23, 2026}\label{week-11-may-23-2026}
+
+\end{center}
+
+\textbf{Topic:} Model Evaluation \& Selection
+
+\begin{itemize}
+\tightlist
+\item
+  Cross-validation (k-fold, stratified)
+\item
+  Hyperparameter tuning: Grid Search, Randomised Search
+\item
+  Learning curves and validation curves
+\item
+  \emph{Reading:} Geron Ch. 2 (evaluation sections)
+\item
+  \textbf{Assignment 7 Due}
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 12 -- May 30, 2026}\label{week-12-may-30-2026}
+
+\end{center}
+
+\textbf{Topic:} Advanced Ensemble Methods
+
+\begin{itemize}
+\tightlist
+\item
+  Gradient Boosting in depth (XGBoost, LightGBM)
+\item
+  Stacking and blending
+\item
+  \emph{Reading:} Geron Ch. 7 (boosting sections)
+\item
+  \textbf{Start Assignment 8:} Ensemble Modeling
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 13 -- June 06, 2026}\label{week-13-june-06-2026}
+
+\end{center}
+
+\textbf{Topic:} Introduction to Neural Networks
+
+\begin{itemize}
+\tightlist
+\item
+  Perceptron and multi-layer perceptron (MLP)
+\item
+  Backpropagation and activation functions
+\item
+  Building and training a neural network with Keras
+\item
+  \emph{Reading:} Geron Ch. 10 --- Introduction to Artificial Neural
+  Networks with Keras
+\item
+  \textbf{Assignment 8 Due}
+\end{itemize}
+
+\end{blackbox}
+
+\begin{blackbox}
+
+\begin{center}
+
+\subsection{Week 14 -- June 13, 2026}\label{week-14-june-13-2026}
+
+\end{center}
+
+\textbf{Topic:} Final Project Wrap-Up \& Review
+
+\begin{itemize}
+\tightlist
+\item
+  Course review and key takeaways
+\item
+  Q\&A session; common pitfalls and lessons learned
+\item
+  \textbf{Final Project Report \& Recorded Presentation Due} (submit
+  video link and report to Canvas by 11:59 PM)
+\end{itemize}
+
+\end{blackbox}
+
+\end{document}
