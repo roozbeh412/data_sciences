@@ -1,0 +1,1272 @@
+---
+title: "Week 08: Data Preprocessing & Feature Engineering"
+author: "Roozbeh Sadeghian"
+date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  fig.width = 8,
+  fig.height = 6
+)
+
+if (!requireNamespace("seedhash", quietly = TRUE)) {
+  if (!requireNamespace("pak", quietly = TRUE)) {
+    install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
+  }
+  pak::pkg_install("github::roozbeh412/seedhash/R", ask = FALSE)
+}
+```
+
+```{r seeds, include=TRUE}
+library(seedhash)
+gen <- SeedHashGenerator$new("ANLY530-Week08-FeatureEngineering")
+MASTER_SEED <- gen$generate_seeds(1)
+set.seed(MASTER_SEED)
+```
+
+```{r seedhash-info, echo=FALSE, results='asis'}
+cat(paste0(
+  "> **Reproducibility note:** This tutorial uses the ",
+  "[seedhash](https://github.com/roozbeh412/seedhash) package to produce ",
+  "deterministic, machine-independent random seeds. The master seed for this ",
+  "document is **", MASTER_SEED, "**, derived from the key ",
+  "`ANLY530-Week08-FeatureEngineering`."
+))
+```
+
+```{r load-packages}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  tidyverse,
+  gridExtra,
+  scales,
+  caret,
+  RANN,
+  corrplot,
+  GGally,
+  randomForest,
+  rpart,
+  e1071,
+  ROSE,
+  knitr,
+  kableExtra
+)
+```
+
+---
+
+# Introduction
+
+In Weeks 02--07 we built classifiers and clustering algorithms, but we always started with clean, tidy data. Real-world data is rarely so cooperative. Features arrive with missing values, bizarre outliers, wildly different scales, and categorical labels that algorithms cannot digest directly.
+
+> "Data preprocessing is the transformation of raw data into a format that is more suitable and meaningful for analysis and model training." — Pure Storage [1]
+
+**Feature engineering** is the art of transforming raw, messy data into features that machine learning models can actually learn from. It is widely considered the single most impactful step in any ML project. As the saying goes:
+
+> **"Garbage In, Garbage Out."** — A golden rule of data science [3]
+
+This week we cover the complete preprocessing pipeline:
+
+1. **Data Cleaning** — handling missing values, outliers, and duplicates.
+2. **Feature Scaling** — normalization and standardisation.
+3. **Encoding Categorical Variables** — label encoding and one-hot encoding.
+4. **Feature Engineering** — creating new features from existing ones.
+5. **Feature Selection** — correlation analysis and variable importance.
+6. **Handling Imbalanced Data** — oversampling, undersampling, SMOTE.
+7. **Train/Test Splitting** — avoiding data leakage.
+
+### Learning Objectives
+
+By the end of this tutorial you will be able to:
+
+1. Identify and handle missing values using deletion and imputation.
+2. Detect outliers with box plots, Z-scores, and the IQR method.
+3. Apply min-max scaling and Z-score standardisation to numeric features.
+4. Encode categorical variables using label encoding and one-hot encoding.
+5. Engineer new features through interaction terms, binning, and polynomial features.
+6. Use correlation heatmaps and variable importance to select relevant features.
+7. Address class imbalance with oversampling, undersampling, and SMOTE.
+8. Split data properly to prevent data leakage.
+
+### Required Packages
+
+| Package | Purpose |
+|---|---|
+| `tidyverse` | Data wrangling and `ggplot2` |
+| `gridExtra` | Multi-panel figure layouts |
+| `scales` | Axis formatting helpers |
+| `caret` | Preprocessing utilities, train/test splitting |
+| `corrplot` | Correlation matrix visualisation |
+| `GGally` | Pairs plots |
+| `randomForest` | Variable importance |
+| `rpart` | Decision tree for variable importance |
+| `e1071` | SVM for model comparison |
+| `ROSE` | Over/undersampling and SMOTE |
+| `knitr` / `kableExtra` | Formatted tables |
+
+---
+
+# Part 1 — Why Preprocessing Matters
+
+Before we touch any algorithm, let us see *why* raw data breaks models.
+
+```{r messy-data-create}
+set.seed(MASTER_SEED)
+messy <- data.frame(
+  age = c(25, 32, NA, 45, 28, 150, 38, NA, 52, 29,
+          34, 41, 27, 55, NA, 36, 43, 31, 48, 22),
+  income = c(35000, 52000, 41000, NA, 28000, 95000, 62000, 44000,
+             78000, 33000, 46000, NA, 37000, 71000, 55000,
+             49000, 67000, 39000, 85000, 26000),
+  education = c("Bachelor", "Master", "PhD", "Bachelor", "High School",
+                "Master", "Bachelor", NA, "PhD", "High School",
+                "Bachelor", "Master", "High School", "PhD", "Bachelor",
+                "Master", "Bachelor", "High School", "PhD", "Bachelor"),
+  purchased = factor(c(0, 1, 1, 1, 0, 1, 1, 0, 1, 0,
+                        0, 1, 0, 1, 1, 1, 1, 0, 1, 0))
+)
+```
+
+```{r messy-summary}
+summary(messy)
+cat("\nMissing values per column:\n")
+colSums(is.na(messy))
+```
+
+We have **NA values** in age, income, and education; an outlier (age = 150 — nobody is 150 years old); and a categorical column (`education`) that needs encoding. Let us fix these problems one by one.
+
+### Visualising the Mess
+
+```{r messy-viz, fig.width=14, fig.height=5}
+p_age <- ggplot(messy, aes(y = age)) +
+  geom_boxplot(fill = "#1976D2", alpha = 0.6, width = 0.4) +
+  labs(title = "Age: Outlier at 150", y = "Age") +
+  theme_minimal(base_size = 13)
+
+p_income <- ggplot(messy, aes(y = income)) +
+  geom_boxplot(fill = "#4CAF50", alpha = 0.6, width = 0.4) +
+  labs(title = "Income: Spread Is Wide", y = "Income") +
+  theme_minimal(base_size = 13)
+
+p_missing <- messy %>%
+  summarise(across(everything(), ~sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "Feature", values_to = "Missing") %>%
+  ggplot(aes(x = reorder(Feature, -Missing), y = Missing, fill = Feature)) +
+  geom_col(alpha = 0.8) +
+  scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50", "#FF9800")) +
+  labs(title = "Missing Values per Feature", x = "", y = "Count") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+
+grid.arrange(p_age, p_income, p_missing, ncol = 3)
+```
+
+The box plot for `age` immediately reveals the 150 outlier. The bar chart shows where NAs hide.
+
+---
+
+# Part 2 — Handling Missing Values
+
+Missing data is one of the most common problems in real datasets. There are three main strategies:
+
+| Strategy | When to Use | Risk |
+|---|---|---|
+| **Delete rows** | Very few NAs, large dataset | Lose information |
+| **Delete columns** | Majority of values missing | Lose an entire feature |
+| **Impute** | Moderate NAs, feature is important | Introduces artificial data |
+
+## 2.1 Visualising Missing Patterns
+
+```{r missing-heatmap, fig.width=8, fig.height=5}
+missing_matrix <- messy %>%
+  mutate(across(everything(), as.character)) %>%
+  mutate(row = row_number()) %>%
+  pivot_longer(-row, names_to = "Feature", values_to = "Value") %>%
+  mutate(is_missing = is.na(Value))
+
+ggplot(missing_matrix, aes(x = Feature, y = factor(row), fill = is_missing)) +
+  geom_tile(colour = "white", linewidth = 0.3) +
+  scale_fill_manual(values = c("FALSE" = "#E8F5E9", "TRUE" = "#E53935"),
+                    labels = c("Present", "Missing")) +
+  labs(title = "Missing Value Heatmap",
+       x = "Feature", y = "Row", fill = "") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.y = element_text(size = 8))
+```
+
+Red cells show exactly which rows and columns have missing data.
+
+## 2.2 Imputation Strategies
+
+```{r imputation-demo}
+clean <- messy
+
+clean$age[clean$age > 120] <- NA
+
+clean$age[is.na(clean$age)] <- median(clean$age, na.rm = TRUE)
+clean$income[is.na(clean$income)] <- mean(clean$income, na.rm = TRUE)
+
+mode_edu <- names(sort(table(clean$education), decreasing = TRUE))[1]
+clean$education[is.na(clean$education)] <- mode_edu
+
+cat("After imputation:\n")
+colSums(is.na(clean))
+```
+
+```{r imputation-comparison, fig.width=12, fig.height=5}
+compare_df <- data.frame(
+  value = c(messy$age, clean$age),
+  stage = rep(c("Before (with outlier + NAs)", "After Imputation"), each = nrow(messy))
+)
+
+p_before <- ggplot(data.frame(age = messy$age), aes(x = age)) +
+  geom_histogram(bins = 12, fill = "#E53935", alpha = 0.7, colour = "white") +
+  labs(title = "Age: Before", x = "Age", y = "Count") +
+  theme_minimal(base_size = 12)
+
+p_after <- ggplot(data.frame(age = clean$age), aes(x = age)) +
+  geom_histogram(bins = 12, fill = "#4CAF50", alpha = 0.7, colour = "white") +
+  labs(title = "Age: After Imputation", x = "Age", y = "Count") +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p_before, p_after, ncol = 2)
+```
+
+The outlier at 150 is gone and the NA gaps are filled. The distribution now looks realistic.
+
+### Imputation Methods Summary
+
+| Method | Best For | R Code |
+|---|---|---|
+| Mean | Numeric, roughly symmetric | `mean(x, na.rm = TRUE)` |
+| Median | Numeric, skewed or has outliers | `median(x, na.rm = TRUE)` |
+| Mode | Categorical | Most frequent value |
+| KNN | Complex relationships | `caret::preProcess(method = "knnImpute")` |
+
+## 2.3 KNN Imputation
+
+For more complex datasets, **KNN imputation** finds the K most similar rows (neighbours) and uses their average to fill in the missing value. This is smarter than a global mean because it uses local context.
+
+```{r knn-imputation, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 7)
+knn_demo <- data.frame(
+  x = c(rnorm(40, 3, 1), rnorm(40, 7, 1)),
+  y = c(rnorm(40, 3, 1), rnorm(40, 7, 1))
+)
+na_idx <- sample(nrow(knn_demo), 10)
+knn_demo_missing <- knn_demo
+knn_demo_missing$x[na_idx] <- NA
+
+pp_knn <- preProcess(knn_demo_missing, method = "knnImpute")
+knn_imputed <- predict(pp_knn, knn_demo_missing)
+
+knn_demo$type <- "Original"
+knn_demo_missing$type <- "With NAs"
+
+p_orig <- ggplot(knn_demo, aes(x, y)) +
+  geom_point(size = 2.5, colour = "#1976D2", alpha = 0.7) +
+  labs(title = "Original (Complete)", x = "X", y = "Y") +
+  theme_minimal(base_size = 12)
+
+highlight <- data.frame(x = knn_demo$x[na_idx], y = knn_demo$y[na_idx])
+p_knn <- ggplot(knn_imputed, aes(x, y)) +
+  geom_point(size = 2.5, colour = "#4CAF50", alpha = 0.5) +
+  geom_point(data = data.frame(x = knn_imputed$x[na_idx], y = knn_imputed$y[na_idx]),
+             aes(x, y), size = 4, colour = "#E53935", shape = 17) +
+  labs(title = "KNN Imputed (red triangles = filled)", x = "X", y = "Y") +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p_orig, p_knn, ncol = 2)
+```
+
+The red triangles are the imputed values. KNN places them near similar data points rather than at the global centre.
+
+---
+
+# Part 3 — Handling Outliers
+
+An **outlier** is a data point that is far from the rest. Outliers can be genuine (e.g., a billionaire in an income survey) or errors (e.g., age = 150).
+
+## 3.1 Detection Methods
+
+### IQR Method
+
+The **Interquartile Range (IQR)** method flags any value below $Q_1 - 1.5 \times \text{IQR}$ or above $Q_3 + 1.5 \times \text{IQR}$.
+
+```{r outlier-iqr}
+set.seed(MASTER_SEED + 1)
+outlier_data <- data.frame(
+  value = c(rnorm(95, 50, 10), 120, 130, 5, -10, 150)
+)
+
+Q1 <- quantile(outlier_data$value, 0.25)
+Q3 <- quantile(outlier_data$value, 0.75)
+IQR_val <- Q3 - Q1
+lower <- Q1 - 1.5 * IQR_val
+upper <- Q3 + 1.5 * IQR_val
+
+outlier_data$is_outlier <- outlier_data$value < lower | outlier_data$value > upper
+cat(sprintf("IQR = %.1f, Lower fence = %.1f, Upper fence = %.1f\n", IQR_val, lower, upper))
+cat(sprintf("Outliers detected: %d\n", sum(outlier_data$is_outlier)))
+```
+
+```{r outlier-viz, fig.width=12, fig.height=5}
+p_box <- ggplot(outlier_data, aes(y = value)) +
+  geom_boxplot(fill = "#1976D2", alpha = 0.5, width = 0.3) +
+  geom_hline(yintercept = c(lower, upper), linetype = "dashed", colour = "#E53935") +
+  annotate("text", x = 0.35, y = upper + 5, label = "Upper Fence", colour = "#E53935", size = 4) +
+  annotate("text", x = 0.35, y = lower - 5, label = "Lower Fence", colour = "#E53935", size = 4) +
+  labs(title = "Box Plot with IQR Fences", y = "Value") +
+  theme_minimal(base_size = 13)
+
+p_scatter <- ggplot(outlier_data, aes(x = seq_along(value), y = value, colour = is_outlier)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_colour_manual(values = c("FALSE" = "#1976D2", "TRUE" = "#E53935"),
+                      labels = c("Normal", "Outlier")) +
+  labs(title = "Scatter: Outliers in Red", x = "Index", y = "Value", colour = "") +
+  theme_minimal(base_size = 13)
+
+grid.arrange(p_box, p_scatter, ncol = 2)
+```
+
+### Z-Score Method
+
+A **Z-score** tells you how many standard deviations a point is from the mean. Values with $|Z| > 3$ are commonly treated as outliers.
+
+$$Z = \frac{x - \mu}{\sigma}$$
+
+```{r zscore-demo, fig.width=8, fig.height=5}
+outlier_data$z_score <- (outlier_data$value - mean(outlier_data$value)) / sd(outlier_data$value)
+outlier_data$z_outlier <- abs(outlier_data$z_score) > 3
+
+ggplot(outlier_data, aes(x = seq_along(value), y = z_score, colour = z_outlier)) +
+  geom_point(size = 2.5) +
+  geom_hline(yintercept = c(-3, 3), linetype = "dashed", colour = "#E53935") +
+  scale_colour_manual(values = c("FALSE" = "#4CAF50", "TRUE" = "#E53935"),
+                      labels = c("Normal", "Outlier (|Z| > 3)")) +
+  labs(title = "Z-Score Method for Outlier Detection",
+       x = "Index", y = "Z-Score", colour = "") +
+  theme_minimal(base_size = 13)
+```
+
+## 3.2 What to Do with Outliers
+
+| Strategy | When to Use |
+|---|---|
+| **Remove** | Clearly erroneous (data entry mistake) |
+| **Cap / Winsorise** | Genuine but extreme — clip to the 5th/95th percentile |
+| **Transform** | Apply log or sqrt to compress the range |
+| **Keep** | The outlier is real and informative |
+
+```{r outlier-treatment, fig.width=14, fig.height=5}
+raw_vals <- outlier_data$value
+
+capped_vals <- pmin(pmax(raw_vals, lower), upper)
+
+log_vals <- log1p(raw_vals - min(raw_vals))
+
+df_treat <- data.frame(
+  value = c(raw_vals, capped_vals, log_vals),
+  method = rep(c("Raw", "Capped (Winsorised)", "Log-Transformed"), each = length(raw_vals))
+)
+
+ggplot(df_treat, aes(x = value)) +
+  geom_histogram(bins = 20, fill = "#1976D2", alpha = 0.7, colour = "white") +
+  facet_wrap(~method, scales = "free_x") +
+  labs(title = "Three Ways to Handle Outliers", x = "Value", y = "Count") +
+  theme_minimal(base_size = 12)
+```
+
+Capping clips extreme values to the fences. Log-transform pulls the tail inward, making the distribution more symmetric.
+
+---
+
+# Part 4 — Feature Scaling
+
+Many ML algorithms (K-Means, SVM, KNN, Neural Networks, Gradient Descent) are **sensitive to feature scale**. If income is in the tens of thousands and age is in the tens, income will dominate.
+
+## 4.1 Min-Max Normalisation
+
+Rescales every feature to the range $[0, 1]$:
+
+$$X_{\text{norm}} = \frac{X - X_{\min}}{X_{\max} - X_{\min}}$$
+
+## 4.2 Z-Score Standardisation
+
+Centres each feature to mean 0 and standard deviation 1:
+
+$$X_{\text{std}} = \frac{X - \mu}{\sigma}$$
+
+```{r scaling-demo}
+set.seed(MASTER_SEED + 2)
+scale_data <- data.frame(
+  age = c(25, 32, 47, 19, 55, 38, 42, 28, 61, 35),
+  income = c(30000, 52000, 78000, 22000, 95000, 61000, 70000, 35000, 110000, 48000)
+)
+
+minmax <- function(x) (x - min(x)) / (max(x) - min(x))
+zscore <- function(x) (x - mean(x)) / sd(x)
+
+scaled_mm <- as.data.frame(lapply(scale_data, minmax))
+scaled_z  <- as.data.frame(lapply(scale_data, zscore))
+```
+
+```{r scaling-viz, fig.width=14, fig.height=10}
+make_scatter <- function(df, title) {
+  ggplot(df, aes(x = age, y = income)) +
+    geom_point(size = 4, colour = "#1976D2", alpha = 0.8) +
+    labs(title = title, x = "Age", y = "Income") +
+    theme_minimal(base_size = 12)
+}
+
+p_raw <- make_scatter(scale_data, "Raw Data (Different Scales)")
+p_mm  <- make_scatter(scaled_mm, "Min-Max Scaled [0, 1]")
+p_z   <- make_scatter(scaled_z, "Z-Score Standardised")
+
+p_range <- data.frame(
+  feature = rep(c("Age", "Income"), each = nrow(scale_data)),
+  raw = c(scale_data$age, scale_data$income),
+  minmax = c(scaled_mm$age, scaled_mm$income),
+  zscore = c(scaled_z$age, scaled_z$income)
+) %>%
+  pivot_longer(cols = c(raw, minmax, zscore), names_to = "method", values_to = "value") %>%
+  mutate(method = factor(method, levels = c("raw", "minmax", "zscore"),
+                         labels = c("Raw", "Min-Max", "Z-Score")))
+
+p_compare <- ggplot(p_range, aes(x = feature, y = value, fill = feature)) +
+  geom_boxplot(alpha = 0.6) +
+  facet_wrap(~method, scales = "free_y") +
+  scale_fill_manual(values = c("#1976D2", "#4CAF50")) +
+  labs(title = "Feature Ranges Before and After Scaling", x = "", y = "Value") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+grid.arrange(p_raw, p_mm, p_z, p_compare, ncol = 2)
+```
+
+In the raw data, income values are 1,000x larger than age values. After scaling, both features live on comparable ranges. The model can now treat them fairly.
+
+### Impact on Model Performance
+
+Let us see what happens when we train a model with and without scaling.
+
+```{r scaling-impact, fig.width=10, fig.height=5}
+set.seed(MASTER_SEED + 8)
+n <- 200
+impact_data <- data.frame(
+  x1 = rnorm(n, 50000, 15000),
+  x2 = rnorm(n, 5, 2),
+  class = factor(sample(c("A", "B"), n, replace = TRUE))
+)
+
+idx_s <- createDataPartition(impact_data$class, p = 0.7, list = FALSE)
+train_s <- impact_data[idx_s, ]
+test_s  <- impact_data[-idx_s, ]
+
+svm_raw <- svm(class ~ ., data = train_s, kernel = "radial")
+acc_raw <- mean(predict(svm_raw, test_s) == test_s$class)
+
+pp_s <- preProcess(train_s[, 1:2], method = c("center", "scale"))
+train_scaled <- cbind(predict(pp_s, train_s[, 1:2]), class = train_s$class)
+test_scaled  <- cbind(predict(pp_s, test_s[, 1:2]), class = test_s$class)
+
+svm_scaled <- svm(class ~ ., data = train_scaled, kernel = "radial")
+acc_scaled <- mean(predict(svm_scaled, test_scaled) == test_scaled$class)
+
+acc_compare <- data.frame(
+  Method = c("SVM Without Scaling", "SVM With Scaling"),
+  Accuracy = c(round(acc_raw * 100, 1), round(acc_scaled * 100, 1))
+)
+
+ggplot(acc_compare, aes(x = Method, y = Accuracy, fill = Method)) +
+  geom_col(alpha = 0.8, width = 0.5) +
+  geom_text(aes(label = paste0(Accuracy, "%")), vjust = -0.5, size = 5) +
+  scale_fill_manual(values = c("#E53935", "#4CAF50")) +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(title = "SVM Accuracy: With vs. Without Feature Scaling",
+       subtitle = "Distance-based algorithms need scaled features",
+       x = "", y = "Accuracy (%)") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+SVM uses distances to define the decision boundary. When features have vastly different scales, the large-scale feature dominates and the small-scale feature is effectively ignored.
+
+### When to Use Which Scaling
+
+```{r scaling-guide}
+scaling_guide <- data.frame(
+  Method = c("Min-Max [0, 1]", "Z-Score (Standardisation)", "Robust Scaler", "MaxAbs Scaler"),
+  Formula = c("(X - min) / (max - min)", "(X - mean) / sd", "(X - median) / IQR", "X / max|X|"),
+  `Best For` = c(
+    "Neural networks, image pixels, bounded data",
+    "Linear regression, logistic regression, SVM, PCA",
+    "Data with outliers (uses median/IQR)",
+    "Sparse data (preserves zeros)"
+  ),
+  check.names = FALSE
+)
+
+kable(scaling_guide, caption = "Feature Scaling Methods") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+---
+
+# Part 5 — Encoding Categorical Variables
+
+ML algorithms need numbers. Categorical variables like `education = "Bachelor"` must be converted.
+
+## 5.1 Label Encoding
+
+Assigns each category a unique integer. Suitable for **ordinal** variables (variables with a natural order).
+
+```{r label-encoding}
+edu_levels <- c("High School", "Bachelor", "Master", "PhD")
+clean$edu_label <- as.integer(factor(clean$education, levels = edu_levels, ordered = TRUE))
+
+kable(data.frame(Education = edu_levels, Code = 1:4),
+      caption = "Label Encoding: Education") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+Label encoding preserves order: High School (1) < Bachelor (2) < Master (3) < PhD (4).
+
+## 5.2 One-Hot Encoding
+
+Creates a separate binary column for each category. Suitable for **nominal** variables (no natural order).
+
+```{r one-hot-encoding}
+set.seed(MASTER_SEED + 3)
+color_data <- data.frame(
+  colour = c("Red", "Blue", "Green", "Red", "Blue", "Green", "Red", "Blue"),
+  size = c(10, 15, 12, 8, 20, 14, 11, 18)
+)
+
+dummy_result <- model.matrix(~ colour - 1, data = color_data)
+onehot_df <- cbind(color_data, as.data.frame(dummy_result))
+
+kable(onehot_df, caption = "One-Hot Encoding: Colour") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r encoding-viz, fig.width=12, fig.height=5}
+p_label <- ggplot(clean, aes(x = factor(edu_label), fill = education)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50", "#FF9800")) +
+  labs(title = "Label Encoding (Ordinal)", x = "Encoded Value", y = "Count", fill = "Education") +
+  theme_minimal(base_size = 12)
+
+onehot_long <- as.data.frame(dummy_result) %>%
+  mutate(row = row_number()) %>%
+  pivot_longer(-row, names_to = "Column", values_to = "Value")
+
+p_onehot <- ggplot(onehot_long, aes(x = Column, y = factor(row), fill = factor(Value))) +
+  geom_tile(colour = "white", linewidth = 0.5) +
+  scale_fill_manual(values = c("0" = "#E8F5E9", "1" = "#1976D2"),
+                    labels = c("0", "1")) +
+  labs(title = "One-Hot Encoding (Nominal)", x = "Dummy Column", y = "Row", fill = "Value") +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p_label, p_onehot, ncol = 2)
+```
+
+### When to Use Which Encoding
+
+| Encoding | Variable Type | Example | Risk |
+|---|---|---|---|
+| **Label** | Ordinal (has order) | Low / Medium / High | None, order is meaningful |
+| **One-Hot** | Nominal (no order) | Red / Blue / Green | High cardinality explodes columns |
+| **Dummy (drop-first)** | Nominal in linear models | Drop one reference category | Avoids multicollinearity |
+
+---
+
+# Part 6 — Feature Engineering
+
+Feature engineering means **creating new features** from existing ones to help the model learn better patterns.
+
+## 6.1 Interaction Features
+
+Sometimes the *combination* of two features is more predictive than either alone.
+
+```{r interaction-features, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 4)
+house <- data.frame(
+  rooms = sample(2:6, 100, replace = TRUE),
+  size_sqft = round(runif(100, 500, 3000)),
+  price = NA
+)
+house$price <- 50000 + 200 * house$size_sqft + 10000 * house$rooms +
+               80 * house$rooms * house$size_sqft + rnorm(100, 0, 20000)
+
+house$room_x_size <- house$rooms * house$size_sqft
+
+p_no_inter <- ggplot(house, aes(x = size_sqft, y = price)) +
+  geom_point(alpha = 0.5, colour = "#1976D2") +
+  geom_smooth(method = "lm", colour = "#E53935", se = FALSE) +
+  labs(title = "Price vs. Size (no interaction)", x = "Size (sqft)", y = "Price") +
+  theme_minimal(base_size = 12)
+
+p_inter <- ggplot(house, aes(x = room_x_size, y = price)) +
+  geom_point(alpha = 0.5, colour = "#4CAF50") +
+  geom_smooth(method = "lm", colour = "#E53935", se = FALSE) +
+  labs(title = "Price vs. Rooms x Size (interaction)", x = "Rooms * Size", y = "Price") +
+  theme_minimal(base_size = 12)
+
+r_no <- round(cor(house$size_sqft, house$price), 3)
+r_inter <- round(cor(house$room_x_size, house$price), 3)
+
+grid.arrange(p_no_inter + annotate("text", x = 2500, y = max(house$price),
+                                    label = paste("r =", r_no), size = 5, colour = "#E53935"),
+             p_inter + annotate("text", x = max(house$room_x_size) * 0.7, y = max(house$price),
+                                 label = paste("r =", r_inter), size = 5, colour = "#E53935"),
+             ncol = 2)
+```
+
+The interaction feature `rooms * size` has a stronger correlation with price because a large house with many rooms is worth disproportionately more.
+
+## 6.2 Binning (Discretisation)
+
+Turning a continuous variable into categories can sometimes help tree-based models or make a feature easier to interpret.
+
+```{r binning-demo, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 5)
+age_data <- data.frame(age = round(runif(200, 18, 80)))
+age_data$age_group <- cut(age_data$age,
+                           breaks = c(0, 25, 35, 50, 65, Inf),
+                           labels = c("18-25", "26-35", "36-50", "51-65", "65+"))
+
+p_cont <- ggplot(age_data, aes(x = age)) +
+  geom_histogram(bins = 25, fill = "#1976D2", alpha = 0.7, colour = "white") +
+  labs(title = "Continuous: Age", x = "Age", y = "Count") +
+  theme_minimal(base_size = 12)
+
+p_binned <- ggplot(age_data, aes(x = age_group, fill = age_group)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50", "#FF9800", "#9C27B0")) +
+  labs(title = "Binned: Age Group", x = "Age Group", y = "Count") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+
+grid.arrange(p_cont, p_binned, ncol = 2)
+```
+
+## 6.3 Log and Polynomial Transforms
+
+```{r transforms-demo, fig.width=14, fig.height=5}
+set.seed(MASTER_SEED + 6)
+skewed <- data.frame(income = c(rlnorm(300, 10.5, 0.8)))
+skewed$log_income <- log(skewed$income)
+skewed$sqrt_income <- sqrt(skewed$income)
+
+p_raw_sk <- ggplot(skewed, aes(x = income)) +
+  geom_histogram(bins = 30, fill = "#E53935", alpha = 0.7, colour = "white") +
+  labs(title = "Raw (Right-Skewed)", x = "Income", y = "Count") +
+  theme_minimal(base_size = 11)
+
+p_log_sk <- ggplot(skewed, aes(x = log_income)) +
+  geom_histogram(bins = 30, fill = "#4CAF50", alpha = 0.7, colour = "white") +
+  labs(title = "Log-Transformed", x = "log(Income)", y = "Count") +
+  theme_minimal(base_size = 11)
+
+p_sqrt_sk <- ggplot(skewed, aes(x = sqrt_income)) +
+  geom_histogram(bins = 30, fill = "#1976D2", alpha = 0.7, colour = "white") +
+  labs(title = "Square Root", x = "sqrt(Income)", y = "Count") +
+  theme_minimal(base_size = 11)
+
+grid.arrange(p_raw_sk, p_log_sk, p_sqrt_sk, ncol = 3)
+```
+
+The raw income distribution is heavily right-skewed. Log and square-root transforms pull the long tail inward, making the distribution more bell-shaped — which many algorithms prefer.
+
+## 6.4 Polynomial Features
+
+Adding squared terms ($x^2$) or cross-terms ($x_1 \times x_2$) lets linear models capture non-linear relationships.
+
+```{r poly-features, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 9)
+poly_data <- data.frame(x = seq(-3, 3, length.out = 80))
+poly_data$y <- 2 * poly_data$x^2 - poly_data$x + rnorm(80, 0, 2)
+
+lm_linear <- lm(y ~ x, data = poly_data)
+lm_poly   <- lm(y ~ x + I(x^2), data = poly_data)
+
+poly_data$pred_linear <- predict(lm_linear, poly_data)
+poly_data$pred_poly   <- predict(lm_poly, poly_data)
+
+p_lin <- ggplot(poly_data, aes(x, y)) +
+  geom_point(alpha = 0.5, colour = "grey50") +
+  geom_line(aes(y = pred_linear), colour = "#E53935", linewidth = 1.2) +
+  labs(title = paste("Linear: R-sq =", round(summary(lm_linear)$r.squared, 3)),
+       x = "x", y = "y") +
+  theme_minimal(base_size = 12)
+
+p_poly <- ggplot(poly_data, aes(x, y)) +
+  geom_point(alpha = 0.5, colour = "grey50") +
+  geom_line(aes(y = pred_poly), colour = "#4CAF50", linewidth = 1.2) +
+  labs(title = paste("With x^2 Feature: R-sq =", round(summary(lm_poly)$r.squared, 3)),
+       x = "x", y = "y") +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p_lin, p_poly, ncol = 2)
+```
+
+The linear model (left) cannot capture the U-shaped curve. Adding $x^2$ as a feature (right) lets a linear model perfectly fit the parabola.
+
+---
+
+# Part 7 — Feature Selection
+
+Not every feature improves a model. Irrelevant or redundant features add noise, slow training, and can cause overfitting. Feature selection identifies the *most useful* features.
+
+## 7.1 Correlation Analysis
+
+If two features are highly correlated, they carry almost the same information. You can drop one without much loss.
+
+```{r correlation-demo, fig.width=10, fig.height=8}
+data(iris)
+cor_matrix <- cor(iris[, 1:4])
+
+corrplot(cor_matrix, method = "color", type = "upper",
+         addCoef.col = "black", number.cex = 1,
+         tl.col = "black", tl.srt = 45,
+         col = colorRampPalette(c("#1976D2", "white", "#E53935"))(200),
+         title = "Iris Feature Correlation Matrix",
+         mar = c(0, 0, 2, 0))
+```
+
+`Petal.Length` and `Petal.Width` are highly correlated (r = 0.96). In a model, we might keep only one of them.
+
+### Finding Highly Correlated Pairs
+
+```{r high-corr-pairs}
+high_corr <- caret::findCorrelation(cor_matrix, cutoff = 0.85, names = TRUE)
+cat("Features recommended for removal (|r| > 0.85):", paste(high_corr, collapse = ", "), "\n")
+```
+
+## 7.2 Variable Importance
+
+Another approach: train a model and ask which features contributed most to its predictions.
+
+```{r var-importance, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 10)
+
+rf_model <- randomForest(Species ~ ., data = iris, ntree = 200, importance = TRUE)
+
+imp_df <- data.frame(
+  Feature = rownames(importance(rf_model)),
+  MeanDecreaseGini = importance(rf_model)[, "MeanDecreaseGini"]
+) %>% arrange(desc(MeanDecreaseGini))
+
+dt_model <- rpart(Species ~ ., data = iris)
+dt_imp <- data.frame(
+  Feature = names(dt_model$variable.importance),
+  Importance = as.numeric(dt_model$variable.importance)
+) %>% arrange(desc(Importance))
+
+p_rf_imp <- ggplot(imp_df, aes(x = reorder(Feature, MeanDecreaseGini), y = MeanDecreaseGini)) +
+  geom_col(fill = "#1976D2", alpha = 0.8) +
+  coord_flip() +
+  labs(title = "Random Forest", x = "", y = "Mean Decrease Gini") +
+  theme_minimal(base_size = 12)
+
+p_dt_imp <- ggplot(dt_imp, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_col(fill = "#4CAF50", alpha = 0.8) +
+  coord_flip() +
+  labs(title = "Decision Tree", x = "", y = "Importance") +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p_rf_imp, p_dt_imp, ncol = 2)
+```
+
+Both models agree: **petal features** are far more important than sepal features for classifying Iris species. If we needed to reduce features, we could safely drop sepal width.
+
+## 7.3 Effect of Feature Removal on Accuracy
+
+```{r feature-removal-effect, fig.width=8, fig.height=5}
+set.seed(MASTER_SEED + 11)
+
+feature_sets <- list(
+  "All 4" = Species ~ .,
+  "Petal Only (2)" = Species ~ Petal.Length + Petal.Width,
+  "Sepal Only (2)" = Species ~ Sepal.Length + Sepal.Width,
+  "Best 1 (P.Width)" = Species ~ Petal.Width
+)
+
+acc_results <- sapply(feature_sets, function(formula) {
+  idx <- createDataPartition(iris$Species, p = 0.7, list = FALSE)
+  train_d <- iris[idx, ]
+  test_d <- iris[-idx, ]
+  rf <- randomForest(formula, data = train_d, ntree = 200)
+  preds <- predict(rf, test_d)
+  mean(preds == test_d$Species)
+})
+
+acc_df <- data.frame(Features = names(acc_results), Accuracy = acc_results)
+
+ggplot(acc_df, aes(x = reorder(Features, Accuracy), y = Accuracy, fill = Features)) +
+  geom_col(alpha = 0.8) +
+  geom_text(aes(label = paste0(round(Accuracy * 100, 1), "%")), hjust = -0.1, size = 4) +
+  coord_flip() +
+  scale_fill_manual(values = c("#1976D2", "#E53935", "#4CAF50", "#FF9800")) +
+  scale_y_continuous(limits = c(0, 1.1), labels = percent) +
+  labs(title = "Random Forest Accuracy by Feature Set",
+       x = "", y = "Test Accuracy") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+Using just the two petal features achieves nearly the same accuracy as all four, confirming that sepal features add little value for this classification task.
+
+---
+
+# Part 8 — Handling Imbalanced Data
+
+In many real-world problems (fraud detection, disease diagnosis, spam filtering), one class is much rarer than the other. A naive model can get 99% accuracy by always predicting the majority class — while catching zero fraud cases.
+
+```{r imbalanced-create}
+set.seed(MASTER_SEED + 20)
+n_majority <- 900
+n_minority <- 100
+imb_data <- data.frame(
+  x1 = c(rnorm(n_majority, 0, 1), rnorm(n_minority, 2, 0.8)),
+  x2 = c(rnorm(n_majority, 0, 1), rnorm(n_minority, 2, 0.8)),
+  class = factor(c(rep("No", n_majority), rep("Yes", n_minority)))
+)
+```
+
+```{r imbalanced-viz, fig.width=12, fig.height=5}
+p_imb_bar <- ggplot(imb_data, aes(x = class, fill = class)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("#1976D2", "#E53935")) +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5, size = 5) +
+  labs(title = "Class Distribution (90:10)", x = "Class", y = "Count") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+
+p_imb_scatter <- ggplot(imb_data, aes(x = x1, y = x2, colour = class)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  scale_colour_manual(values = c("#1976D2", "#E53935")) +
+  labs(title = "Scatter: Minority Class Is Swamped", colour = "Class") +
+  theme_minimal(base_size = 13)
+
+grid.arrange(p_imb_bar, p_imb_scatter, ncol = 2)
+```
+
+## 8.1 Resampling Strategies
+
+| Strategy | How It Works | Risk |
+|---|---|---|
+| **Oversampling** | Duplicate minority samples | Overfitting on repeated examples |
+| **Undersampling** | Remove majority samples | Loss of information |
+| **SMOTE** | Generate *synthetic* minority samples | Noise in sparse areas |
+
+```{r resampling-demo, fig.width=14, fig.height=5}
+set.seed(MASTER_SEED + 21)
+
+over_data <- ovun.sample(class ~ ., data = imb_data, method = "over",
+                          N = n_majority * 2)$data
+under_data <- ovun.sample(class ~ ., data = imb_data, method = "under",
+                           N = n_minority * 2)$data
+both_data <- ovun.sample(class ~ ., data = imb_data, method = "both",
+                          N = 1000)$data
+
+make_bal_plot <- function(df, title) {
+  ggplot(df, aes(x = class, fill = class)) +
+    geom_bar(alpha = 0.8) +
+    scale_fill_manual(values = c("#1976D2", "#E53935")) +
+    geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5, size = 4) +
+    labs(title = title, x = "Class", y = "Count") +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none")
+}
+
+grid.arrange(
+  make_bal_plot(imb_data, "Original (90:10)"),
+  make_bal_plot(over_data, "Oversampled"),
+  make_bal_plot(under_data, "Undersampled"),
+  make_bal_plot(both_data, "Combined (ROSE)"),
+  ncol = 4
+)
+```
+
+```{r resampling-scatter, fig.width=14, fig.height=5}
+make_scatter2 <- function(df, title) {
+  ggplot(df, aes(x = x1, y = x2, colour = class)) +
+    geom_point(alpha = 0.4, size = 1.2) +
+    scale_colour_manual(values = c("#1976D2", "#E53935")) +
+    labs(title = title) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none")
+}
+
+grid.arrange(
+  make_scatter2(imb_data, "Original"),
+  make_scatter2(over_data, "Oversampled"),
+  make_scatter2(under_data, "Undersampled"),
+  make_scatter2(both_data, "Combined"),
+  ncol = 4
+)
+```
+
+Oversampling adds more red dots (minority); undersampling removes blue dots (majority). The combined approach generates synthetic data for the minority while reducing the majority.
+
+---
+
+# Part 9 — Train/Test Splitting and Data Leakage
+
+## 9.1 The Correct Workflow
+
+A critical rule: **fit preprocessing only on training data**, then apply the same transformation to test data. If you scale or impute using the full dataset, information from the test set "leaks" into training.
+
+```{r leakage-diagram}
+workflow_df <- data.frame(
+  Step = 1:6,
+  Action = c(
+    "Split into train / test",
+    "Explore & clean TRAINING data only",
+    "Fit scaler on TRAINING data",
+    "Transform BOTH train and test using the TRAINING scaler",
+    "Train model on preprocessed TRAINING data",
+    "Evaluate on preprocessed TEST data"
+  ),
+  `Data Leakage?` = c("No", "No", "No", "No", "No", "No"),
+  check.names = FALSE
+)
+
+kable(workflow_df, caption = "Correct Preprocessing Workflow") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+```{r leakage-demo, fig.width=12, fig.height=5}
+set.seed(MASTER_SEED + 30)
+leak_data <- iris
+
+idx <- createDataPartition(leak_data$Species, p = 0.7, list = FALSE)
+train_set <- leak_data[idx, 1:4]
+test_set  <- leak_data[-idx, 1:4]
+train_labels <- leak_data$Species[idx]
+test_labels  <- leak_data$Species[-idx]
+
+pp_correct <- preProcess(train_set, method = c("center", "scale"))
+train_correct <- predict(pp_correct, train_set)
+test_correct  <- predict(pp_correct, test_set)
+
+pp_leak <- preProcess(leak_data[, 1:4], method = c("center", "scale"))
+all_scaled <- predict(pp_leak, leak_data[, 1:4])
+train_leak <- all_scaled[idx, ]
+test_leak  <- all_scaled[-idx, ]
+
+compare_means <- data.frame(
+  Feature = names(train_set),
+  `Train Mean (Correct)` = round(colMeans(train_correct), 4),
+  `Test Mean (Correct)` = round(colMeans(test_correct), 4),
+  `Train Mean (Leaked)` = round(colMeans(train_leak), 4),
+  `Test Mean (Leaked)` = round(colMeans(test_leak), 4),
+  check.names = FALSE
+)
+
+kable(compare_means, caption = "Feature Means: Correct vs. Leaked Scaling") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE)
+```
+
+In the correct approach, the training set has mean = 0 (it was fitted on training data), while the test set has a slightly different mean — this is normal. In the leaked approach, both sets are centred around 0 because the scaler saw the test data during fitting.
+
+```{r leakage-visual, fig.width=10, fig.height=5}
+correct_df <- data.frame(
+  Petal.Length = c(train_correct$Petal.Length, test_correct$Petal.Length),
+  set = c(rep("Train", nrow(train_correct)), rep("Test", nrow(test_correct))),
+  method = "Correct (fit on train only)"
+)
+leaked_df <- data.frame(
+  Petal.Length = c(train_leak$Petal.Length, test_leak$Petal.Length),
+  set = c(rep("Train", nrow(train_leak)), rep("Test", nrow(test_leak))),
+  method = "Leaked (fit on ALL data)"
+)
+combined <- rbind(correct_df, leaked_df)
+
+ggplot(combined, aes(x = Petal.Length, fill = set)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~method) +
+  scale_fill_manual(values = c("#E53935", "#1976D2")) +
+  labs(title = "Petal.Length Distribution: Correct vs. Leaked Scaling",
+       x = "Scaled Petal Length", y = "Density", fill = "Set") +
+  theme_minimal(base_size = 12)
+```
+
+---
+
+# Part 10 — Putting It All Together: A Complete Pipeline
+
+Let us build a full preprocessing pipeline on the Iris dataset and see how it affects model performance.
+
+```{r full-pipeline, fig.width=10, fig.height=6}
+set.seed(MASTER_SEED + 40)
+
+data(iris)
+idx <- createDataPartition(iris$Species, p = 0.7, list = FALSE)
+train_raw <- iris[idx, ]
+test_raw  <- iris[-idx, ]
+
+pp <- preProcess(train_raw[, 1:4], method = c("center", "scale"))
+train_pp <- predict(pp, train_raw[, 1:4])
+test_pp  <- predict(pp, test_raw[, 1:4])
+
+train_pp$Species <- train_raw$Species
+test_pp$Species  <- test_raw$Species
+
+models <- list(
+  "Decision Tree" = rpart(Species ~ ., data = train_pp),
+  "Random Forest" = randomForest(Species ~ ., data = train_pp, ntree = 200),
+  "SVM (RBF)"     = svm(Species ~ ., data = train_pp, kernel = "radial")
+)
+
+results <- data.frame(
+  Model = names(models),
+  Accuracy = sapply(models, function(m) {
+    preds <- predict(m, test_pp)
+    if (is.list(preds) && "class" %in% names(preds)) preds <- preds$class
+    round(mean(preds == test_pp$Species) * 100, 1)
+  })
+)
+
+ggplot(results, aes(x = reorder(Model, Accuracy), y = Accuracy, fill = Model)) +
+  geom_col(alpha = 0.8) +
+  geom_text(aes(label = paste0(Accuracy, "%")), hjust = -0.1, size = 5) +
+  coord_flip() +
+  scale_fill_manual(values = c("#1976D2", "#4CAF50", "#E53935")) +
+  scale_y_continuous(limits = c(0, 110)) +
+  labs(title = "Model Accuracy After Full Preprocessing Pipeline",
+       x = "", y = "Test Accuracy (%)") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+With clean, scaled data, all three models perform well. Preprocessing does not change which model is best, but it ensures that distance-based models (like SVM) work at their full potential.
+
+### Preprocessing Checklist
+
+Here is a quick reference for any project:
+
+```{r checklist-table}
+checklist <- data.frame(
+  Step = 1:10,
+  Task = c(
+    "Explore the data (summary, head, dim)",
+    "Identify and handle duplicates",
+    "Visualise missing values",
+    "Impute or remove missing values",
+    "Detect and treat outliers",
+    "Scale / standardise numeric features",
+    "Encode categorical variables",
+    "Engineer new features (interactions, transforms)",
+    "Select features (correlation, importance)",
+    "Split train/test — fit preprocessing on train only"
+  ),
+  `R Function` = c(
+    "summary(), str(), head()",
+    "duplicated(), distinct()",
+    "colSums(is.na()), ggplot() heatmap",
+    "median(), mean(), preProcess('knnImpute')",
+    "boxplot(), IQR(), scale()",
+    "scale(), preProcess('center', 'scale')",
+    "factor(), model.matrix(), dummies",
+    "mutate(x1 * x2), cut(), log()",
+    "cor(), corrplot(), varImp()",
+    "createDataPartition(), preProcess()"
+  ),
+  check.names = FALSE
+)
+
+kable(checklist, caption = "Preprocessing Checklist") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE, width = "4em")
+```
+
+### Which Algorithms Need Scaling?
+
+```{r scaling-needed-table}
+scaling_need <- data.frame(
+  Algorithm = c("Decision Tree", "Random Forest", "Naive Bayes",
+                "K-Nearest Neighbours", "SVM", "Linear/Logistic Regression",
+                "K-Means Clustering", "Neural Networks", "PCA"),
+  `Needs Scaling?` = c("No", "No", "No",
+                        "Yes", "Yes", "Yes",
+                        "Yes", "Yes", "Yes"),
+  Why = c(
+    "Splits on thresholds, scale-invariant",
+    "Ensemble of trees, scale-invariant",
+    "Uses probabilities, not distances",
+    "Distance-based — large features dominate",
+    "Distance-based — support vectors shift",
+    "Coefficients depend on feature scale",
+    "Distance-based — centroids shift",
+    "Gradient descent converges faster",
+    "Variance-based — large features dominate"
+  ),
+  check.names = FALSE
+)
+
+kable(scaling_need, caption = "Which Algorithms Need Feature Scaling?") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+---
+
+# Knowledge Check
+
+<details>
+<summary><strong>Q1: Why is data preprocessing important before training ML models?</strong></summary>
+
+Raw data often contains missing values, outliers, different scales, and non-numeric columns. If you feed this directly to an ML model, it will learn from noise and errors, produce biased predictions, or fail entirely. Preprocessing ensures the data is clean, consistent, and in a format the algorithm can learn from effectively.
+
+</details>
+
+<details>
+<summary><strong>Q2: When should you use median imputation instead of mean imputation?</strong></summary>
+
+Use **median** when the feature has outliers or is heavily skewed. The mean is pulled toward extreme values, so imputing with the mean in a skewed distribution would shift the data. The median is robust to outliers and better represents the "typical" value in such cases.
+
+</details>
+
+<details>
+<summary><strong>Q3: What is the difference between min-max scaling and Z-score standardisation?</strong></summary>
+
+**Min-max scaling** maps values to a fixed range $[0, 1]$ using $(X - \min) / (\max - \min)$. It preserves the shape of the distribution but is sensitive to outliers. **Z-score standardisation** transforms values to have mean 0 and standard deviation 1 using $(X - \mu) / \sigma$. It is less affected by outliers and is preferred when the data needs to be normally distributed.
+
+</details>
+
+<details>
+<summary><strong>Q4: Why is one-hot encoding preferred over label encoding for nominal variables?</strong></summary>
+
+Label encoding assigns integers (1, 2, 3, ...) to categories. For nominal variables (like colour), this falsely implies an order (Red < Blue < Green) and a distance relationship (Green is "twice as far" from Red as Blue). One-hot encoding avoids this by creating separate binary columns, so no artificial ordering is imposed.
+
+</details>
+
+<details>
+<summary><strong>Q5: What is data leakage and how do you prevent it?</strong></summary>
+
+**Data leakage** occurs when information from the test set is used during training or preprocessing. For example, if you scale using the mean/std of the entire dataset (including test data), the model indirectly "sees" test data during training. Prevention: always fit preprocessing (scaling, imputation) on **training data only**, then apply the fitted transformer to both train and test sets.
+
+</details>
+
+<details>
+<summary><strong>Q6: When would you use SMOTE instead of simple oversampling?</strong></summary>
+
+Simple oversampling duplicates existing minority samples, which can cause the model to memorise those exact data points (overfitting). **SMOTE** (Synthetic Minority Over-sampling Technique) generates *new synthetic* samples by interpolating between existing minority points, creating more diverse training examples. Use SMOTE when you have enough minority samples for interpolation to be meaningful.
+
+</details>
+
+---
+
+# Summary
+
+```{r summary-table}
+summary_df <- data.frame(
+  Concept = c(
+    "Missing Values",
+    "Outlier Detection",
+    "Outlier Treatment",
+    "Min-Max Scaling",
+    "Z-Score Standardisation",
+    "Label Encoding",
+    "One-Hot Encoding",
+    "Interaction Features",
+    "Binning",
+    "Log Transform",
+    "Correlation Analysis",
+    "Variable Importance",
+    "Oversampling",
+    "Undersampling",
+    "SMOTE",
+    "Data Leakage Prevention"
+  ),
+  `Key Idea` = c(
+    "Fill gaps with mean, median, mode, or KNN",
+    "IQR fences or Z-score |Z| > 3",
+    "Remove, cap, transform, or keep",
+    "Rescale to [0, 1]",
+    "Centre to mean 0, SD 1",
+    "Map ordered categories to integers",
+    "Create binary columns for each category",
+    "Multiply features to capture combined effects",
+    "Turn continuous into categories",
+    "Compress right-skewed distributions",
+    "Find redundant features (|r| > 0.85)",
+    "Train a model and rank feature contributions",
+    "Duplicate minority class samples",
+    "Remove majority class samples",
+    "Generate synthetic minority samples",
+    "Fit preprocessing on training data only"
+  ),
+  `R Implementation` = c(
+    "median(), mean(), caret::preProcess('knnImpute')",
+    "IQR(), quantile(), scale()",
+    "pmin(pmax(x, lo), hi), log1p(x)",
+    "(x - min) / (max - min)",
+    "scale(x), preProcess('center', 'scale')",
+    "as.integer(factor(x, ordered = TRUE))",
+    "model.matrix(~ x - 1)",
+    "x1 * x2",
+    "cut(x, breaks = ...)",
+    "log(x), sqrt(x)",
+    "cor(), corrplot(), findCorrelation()",
+    "randomForest::importance(), varImp()",
+    "ROSE::ovun.sample(method = 'over')",
+    "ROSE::ovun.sample(method = 'under')",
+    "ROSE::ovun.sample(method = 'both')",
+    "preProcess() on train only, predict() on both"
+  ),
+  check.names = FALSE
+)
+
+kable(summary_df, caption = "Week 08 Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = TRUE) %>%
+  column_spec(1, bold = TRUE)
+```
+
+---
+
+# References
+
+[1] Pure Storage, "What Is Data Preprocessing for Machine Learning?" [Online]. Available: https://www.purestorage.com/knowledge/what-is-data-preprocessing.html
+
+[2] N. Cheke, "Data Preprocessing in Machine Learning: A Detailed Guide," *Medium*, Aug. 2024. [Online]. Available: https://nicks-cheke44.medium.com/data-preprocessing-in-machine-learning-a-detailed-guide-c710df69073f
+
+[3] R. Sadeghian, "Lecture 09 — Preprocessing & Feature Engineering/Selection Part 1," *ANLY 530 — Machine Learning*, Harrisburg University, Oct. 2023.
+
+[4] A. Geron, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*, 2nd ed. Sebastopol, CA: O'Reilly Media, 2019, ch. 2.
+
+[5] B. C. Boehmke and B. M. Greenwell, *Hands-On Machine Learning with R*. Boca Raton, FL: CRC Press, 2020, ch. 3.
+
+[6] M. Kuhn and K. Johnson, *Applied Predictive Modeling*. New York, NY: Springer, 2013.
+
+[7] N. V. Chawla, K. W. Bowyer, L. O. Hall, and W. P. Kegelmeyer, "SMOTE: Synthetic Minority Over-sampling Technique," *Journal of Artificial Intelligence Research*, vol. 16, pp. 321–357, 2002.
+
+[8] seedhash R package. [Online]. Available: https://github.com/roozbeh412/seedhash
+
+---
+
+<div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 10px; margin-top: 30px;">
+<strong>ANLY 530 — Principles & Applications of Machine Learning</strong><br/>
+<em>Harrisburg University</em><br/><br/>
+Next week: Dimensionality Reduction & PCA
+</div>

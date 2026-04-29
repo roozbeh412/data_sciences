@@ -1,6 +1,6 @@
 # Setup Guide
 
-## For Students (ANLY500 Course)
+## For Students (ANLY530 Course)
 
 ### R Environment Setup
 1. **Install R**: Download from [CRAN](https://cran.r-project.org/)
@@ -14,7 +14,7 @@
    ```
 
 ### Opening Course Materials
-1. Navigate to `ANLY500-Analytics-I/WeekXX/` folders
+1. Navigate to `ANLY530-Analytics-I/WeekXX/` folders
 2. Open `.rmd` files (lectures) or `lab/*.Rmd` files (assignments) in RStudio
 3. Run chunks with Ctrl+Enter (Cmd+Enter on Mac)
 4. Knit to HTML (lectures) or Word (labs) using "Knit" button
@@ -55,7 +55,7 @@ python index_knowledge.py
 ### Textbook Indexing Script
 - **Purpose**: Indexes Field et al. (2012) textbook for quick keyword searches
 - **Location**: `index_knowledge.py` (root directory)
-- **Input**: `ANLY500-Analytics-I/Knowledge/Field_ea_2012_Discovering_Statistics_using_R_normalized.txt`
+- **Input**: `ANLY530-Analytics-I/Knowledge/Field_ea_2012_Discovering_Statistics_using_R_normalized.txt`
 - **Output**: JSON summary to console with:
   - Section headers count and samples
   - Keyword hit counts (Data Screening, Missing Data, Outliers, etc.)
