@@ -1,0 +1,1081 @@
+---
+title: "Week 11: Ensemble Modeling — When Many Heads Are Better Than One"
+author: "Roozbeh Sadeghian"
+date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  fig.width = 8,
+  fig.height = 6
+)
+
+# Deterministic seed via seedhash — reproducible across machines
+if (!requireNamespace("seedhash", quietly = TRUE)) {
+  if (!requireNamespace("pak", quietly = TRUE)) {
+    install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
+  }
+  pak::pkg_install("github::roozbeh412/seedhash/R", ask = FALSE)
+}
+```
+
+```{r seeds, include=TRUE}
+library(seedhash)
+gen <- SeedHashGenerator$new("ANLY530-Week11-EnsembleModeling")
+MASTER_SEED <- gen$generate_seeds(1)
+set.seed(MASTER_SEED)
+```
+
+```{r seedhash-info, echo=FALSE, results='asis'}
+cat(sprintf("**Random Seed Source:** `seedhash` package — input string: `\"ANLY530-Week11-EnsembleModeling\"` → seed: `%d`\n\n", MASTER_SEED))
+```
+
+# Introduction
+
+Up to this point we have trained **one** model at a time — a single Decision Tree, a single Random Forest, a single SVM. But real-world machine learning competitions and production systems almost never rely on a single model. They rely on **ensembles**: many models combined together so the *group* makes a smarter decision than any individual.
+
+The idea is older than machine learning. In **1906**, statistician Sir Francis Galton attended a country fair where 800 people each guessed the weight of an ox. No single guess was correct, but the **median** of all guesses was within 1% of the true weight (1,198 lb vs. 1,197 lb). The crowd, despite being made of farmers, butchers, and random visitors, beat every individual expert. This is the **wisdom of the crowd**, and it is the soul of ensemble learning [1], [2].
+
+> **Plain English:** An ensemble is just a *committee of models*. Each model votes (for classification) or contributes its prediction (for regression). If the models are diverse and each is at least slightly better than random, their combined answer is usually more accurate and more stable than any single model on its own.
+
+**Learning Objectives:**
+
+1. Understand the **intuition** behind ensembles and the three conditions that make them work.
+2. Build **voting** classifiers (hard voting and soft voting) by hand and with `caret`.
+3. Master **bagging** (Bootstrap Aggregating) and see why it reduces variance.
+4. Understand **Random Forests** as bagging + random feature selection.
+5. Master **boosting** — sequential models that learn from each other's mistakes (AdaBoost, Gradient Boosting).
+6. Understand **stacking** — using a meta-model to combine base-model predictions.
+7. Compare ensemble methods on real classification and regression data.
+8. Pick the right ensemble for the right problem.
+
+## Required Packages
+
+```{r load-packages}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  tidyverse,
+  caret,
+  e1071,
+  rpart,
+  rpart.plot,
+  randomForest,
+  gbm,
+  MASS,
+  pROC,
+  gridExtra,
+  scales,
+  knitr,
+  kableExtra,
+  RColorBrewer
+)
+```
+
+---
+
+# Part 1: The Intuition — Why Many Heads Are Better Than One
+
+## 1.1 The Coin-Flip Thought Experiment
+
+Suppose you have **one** classifier that is right 60% of the time. That's better than random (50%) but not great. Now imagine you have **15 independent classifiers**, each with the same 60% accuracy, and they vote by majority. How good is the *committee*?
+
+Mathematically, if each model is correct with probability $p = 0.6$ and they make **independent** errors, the probability that a majority of $n = 15$ models is correct is:
+
+$$P(\text{ensemble correct}) = \sum_{k = \lceil n/2 \rceil}^{n} \binom{n}{k} p^k (1-p)^{n-k}$$
+
+Let's see how this grows with the number of models.
+
+```{r ensemble-math, fig.height=5, fig.width=9}
+ensemble_accuracy <- function(p, n) {
+  k_min <- ceiling((n + 1) / 2)
+  sum(dbinom(k_min:n, n, p))
+}
+
+ns <- seq(1, 51, by = 2)
+ps <- c(0.55, 0.60, 0.70, 0.80)
+
+curves_df <- expand_grid(n = ns, p = ps) %>%
+  mutate(
+    Ensemble = mapply(ensemble_accuracy, p, n),
+    Single   = p,
+    p_label  = factor(sprintf("Each model: %.0f%%", p * 100),
+                      levels = sprintf("Each model: %.0f%%", ps * 100))
+  )
+
+ggplot(curves_df, aes(x = n, y = Ensemble, color = p_label)) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(aes(yintercept = Single, color = p_label),
+             linetype = "dashed", linewidth = 0.6) +
+  scale_y_continuous(labels = percent, limits = c(0.5, 1)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Wisdom of the Crowd: Ensemble Accuracy vs. Single-Model Accuracy",
+    subtitle = "Solid = majority vote of n models; Dashed = single model accuracy",
+    x = "Number of Models in the Ensemble (n)",
+    y = "Accuracy", color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+> **Takeaway:** A single 60% model never gets better. But a *vote of 15* independent 60% models reaches **about 90%** accuracy. The catch is in the words **"independent."** That's the hard part.
+
+## 1.2 Three Conditions for a Good Ensemble
+
+For the wisdom of the crowd to actually work, three things must be true [1], [3]:
+
+| Condition | Plain English | What Goes Wrong if Violated |
+|:---|:---|:---|
+| **Better than random** | Every model is at least *slightly* better than guessing. | If models are worse than random, voting **amplifies** the errors. |
+| **Diversity** | Models make *different* kinds of mistakes. | If all models make the same mistake, they all vote wrong together — no improvement. |
+| **Reasonably independent** | One model's errors don't perfectly correlate with another's. | Identical models give you no new information, no matter how many you stack. |
+
+This is why ensembles in practice mix **different model families** (a tree, a linear model, a nearest-neighbour) or train the **same family on different slices of data** (bagging). Both strategies create the diversity we need.
+
+## 1.3 Visualising Diversity
+
+Let's make this concrete. We'll create a 2-D classification problem and train two models that disagree on different regions.
+
+```{r diversity-viz, fig.height=5, fig.width=10}
+set.seed(MASTER_SEED)
+n_per <- 150
+df_diverse <- tibble(
+  x1 = c(rnorm(n_per, 1, 1), rnorm(n_per, 4, 1)),
+  x2 = c(rnorm(n_per, 1, 1), rnorm(n_per, 4, 1)),
+  y  = factor(rep(c("A", "B"), each = n_per))
+)
+
+m_tree <- rpart(y ~ x1 + x2, data = df_diverse, method = "class",
+                control = rpart.control(maxdepth = 2))
+m_glm  <- glm(y ~ x1 + x2, data = df_diverse, family = binomial)
+
+grid <- expand_grid(x1 = seq(-2, 7, length.out = 120),
+                    x2 = seq(-2, 7, length.out = 120))
+grid$tree <- predict(m_tree, grid, type = "class")
+grid$glm  <- factor(ifelse(predict(m_glm, grid, type = "response") > 0.5, "B", "A"))
+
+p_tree <- ggplot(grid, aes(x = x1, y = x2, fill = tree)) +
+  geom_raster(alpha = 0.4) +
+  geom_point(data = df_diverse,
+             mapping = aes(x = x1, y = x2, color = y),
+             size = 1.6, inherit.aes = FALSE) +
+  scale_fill_manual(values = c(A = "#FFD180", B = "#80D8FF"), guide = "none") +
+  scale_color_manual(values = c(A = "#E65100", B = "#0277BD"), name = "Class") +
+  labs(title = "Decision Tree (depth 2)",
+       subtitle = "Axis-aligned rectangular boundaries") +
+  theme_minimal(base_size = 12) + coord_equal()
+
+p_glm <- ggplot(grid, aes(x = x1, y = x2, fill = glm)) +
+  geom_raster(alpha = 0.4) +
+  geom_point(data = df_diverse,
+             mapping = aes(x = x1, y = x2, color = y),
+             size = 1.6, inherit.aes = FALSE) +
+  scale_fill_manual(values = c(A = "#FFD180", B = "#80D8FF"), guide = "none") +
+  scale_color_manual(values = c(A = "#E65100", B = "#0277BD"), name = "Class") +
+  labs(title = "Logistic Regression",
+       subtitle = "A single straight-line boundary") +
+  theme_minimal(base_size = 12) + coord_equal()
+
+grid.arrange(p_tree, p_glm, ncol = 2,
+             top = "Two Diverse Models — Different Mistakes in Different Regions")
+```
+
+> **Why this matters:** The tree and the logistic regression produce *different shaped* boundaries, so they make different errors. When we combine them, each one's strengths can cover the other's weaknesses.
+
+---
+
+# Part 2: Voting Ensembles — The Simplest Ensemble
+
+The most direct ensemble: train several different models, then ask each one to predict the class. Take the vote. Done.
+
+There are two flavours.
+
+## 2.1 Hard Voting (Majority Rule)
+
+In **hard voting**, each model outputs a final class label. The ensemble picks the label that appears most often.
+
+> **Analogy:** A jury of 12 people. Each gives a verdict of "guilty" or "not guilty". The majority wins.
+
+## 2.2 Soft Voting (Weighted Probabilities)
+
+In **soft voting**, each model outputs a *probability* for each class. The ensemble averages the probabilities and picks the class with the highest average.
+
+> **Analogy:** Same jury, but instead of a thumbs-up/thumbs-down, each juror reports how *confident* they are. A juror who says "I'm 95% sure he's guilty" carries more weight than one who says "I'm 51% sure". Soft voting almost always beats hard voting when the base models are well-calibrated.
+
+## 2.3 Building a Voting Classifier on Iris
+
+Let's train three different model families on Iris, then combine them.
+
+```{r voting-data}
+data(iris)
+set.seed(MASTER_SEED)
+
+train_idx <- sample(seq_len(nrow(iris)), 0.7 * nrow(iris))
+iris_train <- iris[train_idx, ]
+iris_test  <- iris[-train_idx, ]
+
+cat(sprintf("Training:  %d rows\nTesting:   %d rows\n",
+            nrow(iris_train), nrow(iris_test)))
+```
+
+```{r voting-models}
+set.seed(MASTER_SEED)
+m_dt  <- rpart(Species ~ ., data = iris_train, method = "class")
+m_rf  <- randomForest(Species ~ ., data = iris_train, ntree = 200)
+m_svm <- svm(Species ~ ., data = iris_train, probability = TRUE)
+```
+
+### Hard voting by hand
+
+```{r hard-voting}
+pred_dt  <- predict(m_dt,  iris_test, type = "class")
+pred_rf  <- predict(m_rf,  iris_test)
+pred_svm <- predict(m_svm, iris_test)
+
+majority_vote <- function(...) {
+  votes <- c(...)
+  names(sort(table(votes), decreasing = TRUE))[1]
+}
+
+pred_hard <- factor(
+  mapply(majority_vote,
+         as.character(pred_dt),
+         as.character(pred_rf),
+         as.character(pred_svm)),
+  levels = levels(iris_test$Species)
+)
+
+acc_dt   <- mean(pred_dt   == iris_test$Species)
+acc_rf   <- mean(pred_rf   == iris_test$Species)
+acc_svm  <- mean(pred_svm  == iris_test$Species)
+acc_hard <- mean(pred_hard == iris_test$Species)
+
+cat(sprintf("Decision Tree   : %.1f%%\n", 100 * acc_dt))
+cat(sprintf("Random Forest   : %.1f%%\n", 100 * acc_rf))
+cat(sprintf("SVM (RBF)       : %.1f%%\n", 100 * acc_svm))
+cat(sprintf("Hard Vote       : %.1f%%\n", 100 * acc_hard))
+```
+
+### Soft voting by hand
+
+For soft voting we need each model to return a probability for every class. We then average those matrices.
+
+```{r soft-voting}
+prob_dt  <- predict(m_dt,  iris_test, type = "prob")
+prob_rf  <- predict(m_rf,  iris_test, type = "prob")
+
+svm_pred  <- predict(m_svm, iris_test, probability = TRUE)
+prob_svm  <- attr(svm_pred, "probabilities")
+prob_svm  <- prob_svm[, colnames(prob_dt)]
+
+prob_avg  <- (prob_dt + prob_rf + prob_svm) / 3
+
+pred_soft <- factor(colnames(prob_avg)[max.col(prob_avg)],
+                    levels = levels(iris_test$Species))
+acc_soft <- mean(pred_soft == iris_test$Species)
+cat(sprintf("Soft Vote       : %.1f%%\n", 100 * acc_soft))
+```
+
+```{r voting-comparison-viz, fig.height=4.5, fig.width=9}
+voting_df <- data.frame(
+  Model = c("Decision Tree", "Random Forest", "SVM (RBF)",
+            "Hard Voting", "Soft Voting"),
+  Accuracy = c(acc_dt, acc_rf, acc_svm, acc_hard, acc_soft),
+  Type = c(rep("Single Model", 3), rep("Ensemble", 2))
+)
+
+ggplot(voting_df, aes(x = reorder(Model, Accuracy), y = Accuracy, fill = Type)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = sprintf("%.1f%%", Accuracy * 100)),
+            hjust = -0.15, fontface = "bold") +
+  coord_flip() +
+  scale_y_continuous(labels = percent, limits = c(0, 1.05)) +
+  scale_fill_manual(values = c("Single Model" = "#90A4AE", "Ensemble" = "#1E88E5")) +
+  labs(
+    title = "Voting Ensembles vs. Individual Models on Iris",
+    x = NULL, y = "Test Accuracy", fill = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+> **Reading the chart:** On Iris, all three base models are already strong, so the gains are small. On harder datasets (where each model hovers around 60–70%), the lift from voting is dramatic.
+
+---
+
+# Part 3: Bagging — Bootstrap Aggregating
+
+Bagging (short for **B**ootstrap **Agg**regat**ing**) was introduced by Leo Breiman in 1996 [4]. The recipe is brutally simple:
+
+1. Take the training set of size $N$.
+2. **Bootstrap-sample** it: draw $N$ examples *with replacement* (so some examples appear multiple times, some not at all).
+3. Train one model on this bootstrap sample.
+4. Repeat steps 2–3 many times (e.g., 100 times).
+5. **Average** their predictions (regression) or **vote** (classification).
+
+The clever trick is that *each* model sees a slightly different version of the data, which forces them to be diverse — even if you use the same algorithm every time.
+
+## 3.1 What a Bootstrap Sample Actually Looks Like
+
+```{r bootstrap-viz, fig.height=4.5, fig.width=10}
+set.seed(MASTER_SEED)
+N  <- 30
+original <- tibble(id = 1:N, value = rnorm(N))
+
+bootstraps <- map_dfr(1:3, function(i) {
+  idx <- sample(seq_len(N), N, replace = TRUE)
+  tibble(replicate = paste0("Bootstrap #", i),
+         id    = original$id[idx],
+         value = original$value[idx],
+         pos   = seq_len(N))
+})
+
+oob_pct <- mean(replicate(1000, {
+  idx <- sample.int(N, N, replace = TRUE)
+  length(setdiff(seq_len(N), idx)) / N
+}))
+
+ggplot(bootstraps, aes(x = pos, y = replicate, fill = factor(id))) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = id), size = 3, color = "white", fontface = "bold") +
+  scale_fill_viridis_d(guide = "none", option = "turbo") +
+  labs(
+    title = "Three Bootstrap Samples from a 30-Row Dataset",
+    subtitle = sprintf("Each row is N=30 draws WITH replacement — about %.0f%% of original rows are missing in each sample (the OOB set)",
+                       100 * oob_pct),
+    x = "Position in the bootstrap sample",
+    y = NULL
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+> **Plain English:** A bootstrap sample is the same size as the original, but it's like dealing cards *with* replacement — duplicates are allowed. The rows that **don't** make it into the sample are called **Out-of-Bag (OOB)** rows. They are free, built-in test data: each tree can be tested on the rows it never saw.
+
+## 3.2 Why Bagging Reduces Variance
+
+Decision Trees are notoriously **high-variance** — change a few rows in the training set and the tree might look completely different. Averaging many trees grown on different bootstrap samples cancels out a lot of that variance.
+
+Let's prove it with a small experiment.
+
+```{r bagging-variance-experiment, fig.height=5, fig.width=10}
+set.seed(MASTER_SEED)
+
+make_data <- function(n = 200) {
+  x <- runif(n, -3, 3)
+  y <- sin(x) + rnorm(n, sd = 0.3)
+  tibble(x = x, y = y)
+}
+
+xs <- seq(-3, 3, length.out = 200)
+n_runs <- 50
+
+single_preds <- map_dfr(1:n_runs, function(i) {
+  d <- make_data()
+  m <- rpart(y ~ x, data = d, control = rpart.control(maxdepth = 5, cp = 0))
+  tibble(run = i, x = xs, yhat = predict(m, tibble(x = xs)))
+})
+
+bagged_preds <- map_dfr(1:n_runs, function(i) {
+  d <- make_data()
+  preds_b <- replicate(50, {
+    idx <- sample.int(nrow(d), nrow(d), replace = TRUE)
+    m   <- rpart(y ~ x, data = d[idx, ],
+                 control = rpart.control(maxdepth = 5, cp = 0))
+    predict(m, tibble(x = xs))
+  })
+  tibble(run = i, x = xs, yhat = rowMeans(preds_b))
+})
+
+p1 <- ggplot(single_preds, aes(x = x, y = yhat, group = run)) +
+  geom_line(alpha = 0.15, color = "#E53935") +
+  stat_function(fun = sin, color = "black", linewidth = 1.2, linetype = "dashed") +
+  labs(title = "50 Single Trees (depth 5)",
+       subtitle = "Each line is one tree on a fresh dataset — high variance",
+       y = "ŷ") +
+  ylim(-2, 2) +
+  theme_minimal(base_size = 12)
+
+p2 <- ggplot(bagged_preds, aes(x = x, y = yhat, group = run)) +
+  geom_line(alpha = 0.4, color = "#1E88E5") +
+  stat_function(fun = sin, color = "black", linewidth = 1.2, linetype = "dashed") +
+  labs(title = "50 Bagged Tree Ensembles",
+       subtitle = "Each line is the AVERAGE of 50 trees — much smoother & lower variance",
+       y = "ŷ") +
+  ylim(-2, 2) +
+  theme_minimal(base_size = 12)
+
+grid.arrange(p1, p2, ncol = 2,
+             top = "Bagging Reduces Variance — sin(x) Regression Demo")
+```
+
+> **Reading the chart:** Each red line is a single Decision Tree fit to a new dataset — they jump around wildly. Each blue line is an average of 50 trees on the same kind of data — they cluster tightly around the true function. Bagging is **variance reduction by averaging**.
+
+## 3.3 Random Forests = Bagging + Random Feature Selection
+
+A **Random Forest** [5] is bagging on steroids. At each split inside each tree, instead of considering all features, the tree is only allowed to look at a *random subset* of features (typically $\sqrt{p}$ for classification or $p/3$ for regression). This forces the trees to be even more diverse.
+
+Random Forests give us a **free** test-set estimate via OOB error.
+
+```{r rf-oob, fig.height=4.5, fig.width=9}
+set.seed(MASTER_SEED)
+rf_iris <- randomForest(Species ~ ., data = iris_train, ntree = 500)
+
+oob_df <- tibble(
+  trees = seq_len(nrow(rf_iris$err.rate)),
+  OOB   = rf_iris$err.rate[, "OOB"]
+)
+
+ggplot(oob_df, aes(x = trees, y = OOB)) +
+  geom_line(color = "#1E88E5", linewidth = 1) +
+  scale_y_continuous(labels = percent) +
+  labs(
+    title = "OOB Error vs. Number of Trees in the Forest",
+    subtitle = "OOB = error measured on rows each tree did NOT see — no test split needed",
+    x = "Number of Trees", y = "OOB Error"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+> **Why this is brilliant:** With a single train/test split you waste 30% of your data on testing. With OOB estimation, every row trains *most* trees and tests the remaining ones. You get reliable error estimates *and* every row contributes to learning.
+
+## 3.4 Feature Importance from a Random Forest
+
+Random Forests can also tell us *which features matter most* by tracking how much accuracy drops when each feature is shuffled.
+
+```{r rf-importance, fig.height=4.5, fig.width=8}
+imp <- as.data.frame(importance(rf_iris))
+imp$Feature <- rownames(imp)
+
+ggplot(imp, aes(x = reorder(Feature, MeanDecreaseGini), y = MeanDecreaseGini)) +
+  geom_col(fill = "#43A047") +
+  coord_flip() +
+  labs(
+    title = "Random Forest Feature Importance — Iris",
+    subtitle = "Higher = the model relies more on this feature",
+    x = NULL, y = "Mean Decrease in Gini"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+---
+
+# Part 4: Boosting — Sequential Learning from Mistakes
+
+Where bagging trains models **in parallel** and treats them equally, **boosting** trains them **sequentially**. Each new model is trained to fix what the previous models got wrong.
+
+> **Plain English:** Bagging is a *jury* — everyone votes equally. Boosting is a *relay race* where each runner tries to make up for the mistakes of the runner before them.
+
+## 4.1 The Boosting Algorithm in Plain English
+
+```
+1. Start with equal weight on every training row.
+2. Train a weak model (often a small tree, called a "stump").
+3. Look at which rows it got wrong; INCREASE their weights.
+4. Train a new weak model that focuses on those reweighted rows.
+5. Repeat for many rounds.
+6. The final prediction is a WEIGHTED vote of all the weak models —
+   models that performed better get higher voting power.
+```
+
+## 4.2 AdaBoost — The Original Boosting Algorithm
+
+**AdaBoost** ("Adaptive Boosting") was the first practical boosting algorithm [6]. Let's visualise how the row weights evolve.
+
+```{r adaboost-weights-viz, fig.height=5, fig.width=10}
+set.seed(MASTER_SEED)
+n <- 60
+df_ab <- tibble(
+  x1 = c(rnorm(n/2, -1, 1), rnorm(n/2,  1, 1)),
+  x2 = c(rnorm(n/2,  1, 1), rnorm(n/2, -1, 1)),
+  y  = rep(c(-1, 1), each = n/2)
+)
+
+w <- rep(1/n, n)
+weights_history <- list()
+weights_history[[1]] <- w
+
+for (m in 1:3) {
+  stump <- rpart(factor(y) ~ x1 + x2, data = df_ab, weights = w,
+                 control = rpart.control(maxdepth = 1))
+  pred  <- as.numeric(as.character(predict(stump, df_ab, type = "class")))
+  err   <- sum(w * (pred != df_ab$y)) / sum(w)
+  err   <- pmin(pmax(err, 1e-6), 1 - 1e-6)
+  alpha <- 0.5 * log((1 - err) / err)
+  w     <- w * exp(-alpha * df_ab$y * pred)
+  w     <- w / sum(w)
+  weights_history[[m + 1]] <- w
+}
+
+weights_df <- map_dfr(seq_along(weights_history), function(i) {
+  tibble(round = paste("After round", i - 1),
+         x1 = df_ab$x1, x2 = df_ab$x2,
+         y  = factor(df_ab$y), w = weights_history[[i]])
+}) %>%
+  mutate(round = factor(round, levels = unique(round)))
+
+ggplot(weights_df, aes(x = x1, y = x2, color = y, size = w)) +
+  geom_point(alpha = 0.85) +
+  facet_wrap(~ round, nrow = 1) +
+  scale_size_continuous(range = c(1, 7), guide = "none") +
+  scale_color_manual(values = c("-1" = "#E53935", "1" = "#1E88E5"),
+                     labels = c("Class -1", "Class +1"), name = NULL) +
+  labs(
+    title = "AdaBoost: How Sample Weights Evolve",
+    subtitle = "Bigger circle = the previous round got that row wrong, so the next stump pays it MORE attention",
+    x = "Feature 1", y = "Feature 2"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+> **Reading the chart:** All circles start the same size. After each round, the rows that got misclassified become **larger** — meaning the next weak model is asked to focus on them. The final ensemble is a weighted majority of all stumps.
+
+## 4.3 Gradient Boosting Machines (GBM)
+
+**Gradient Boosting** [7] generalises this idea: instead of reweighting rows, each new model fits the **residuals** (the leftover errors) of the current ensemble. After many rounds, the errors shrink and the ensemble converges.
+
+```{r gbm-iris}
+set.seed(MASTER_SEED)
+
+iris_train_g <- iris_train %>% mutate(Species = as.factor(Species))
+iris_test_g  <- iris_test  %>% mutate(Species = as.factor(Species))
+
+gbm_model <- gbm(
+  Species ~ .,
+  data         = iris_train_g,
+  distribution = "multinomial",
+  n.trees      = 200,
+  interaction.depth = 3,
+  shrinkage    = 0.05,
+  verbose      = FALSE
+)
+
+pred_gbm_prob <- predict(gbm_model, iris_test_g, n.trees = 200, type = "response")
+pred_gbm <- factor(
+  colnames(pred_gbm_prob[ , , 1])[apply(pred_gbm_prob[ , , 1], 1, which.max)],
+  levels = levels(iris_test$Species)
+)
+
+acc_gbm <- mean(pred_gbm == iris_test$Species)
+cat(sprintf("GBM accuracy on Iris test set: %.1f%%\n", 100 * acc_gbm))
+```
+
+### Visualising training error as the GBM learns
+
+```{r gbm-train-curve, fig.height=4.5, fig.width=9}
+gbm_curve <- tibble(
+  iter = seq_along(gbm_model$train.error),
+  train_error = gbm_model$train.error
+)
+
+ggplot(gbm_curve, aes(x = iter, y = train_error)) +
+  geom_line(color = "#FB8C00", linewidth = 1) +
+  labs(
+    title = "Gradient Boosting: Training Loss Drops with Each Tree",
+    subtitle = "Each new tree fits the residuals of the previous ensemble",
+    x = "Number of Boosting Iterations", y = "Multinomial Deviance (lower = better)"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+> **Why "gradient":** Each new tree is fit to the **gradient** of the loss function with respect to the current predictions — i.e., it fits the direction in which the loss decreases fastest. That's exactly the same idea as gradient descent, but in *function* space rather than parameter space.
+
+## 4.4 Bagging vs. Boosting at a Glance
+
+```{r bagging-vs-boosting-table, echo=FALSE}
+bb_df <- data.frame(
+  Aspect = c(
+    "Goal",
+    "How models are trained",
+    "Each model sees…",
+    "Final prediction",
+    "Reduces…",
+    "Risk of overfitting",
+    "Parallelisable?",
+    "Famous examples"
+  ),
+  Bagging = c(
+    "Reduce variance",
+    "In parallel — independently",
+    "A bootstrap sample of the data (different rows)",
+    "Average / majority vote",
+    "Variance",
+    "Low — averaging is stabilising",
+    "Yes — embarrassingly parallel",
+    "Random Forests"
+  ),
+  Boosting = c(
+    "Reduce bias (also some variance)",
+    "Sequentially — each fixes the previous",
+    "The same data with re-weighted rows / residuals",
+    "Weighted vote / weighted sum",
+    "Bias",
+    "Higher — can overfit if too many rounds",
+    "No — must wait for previous model",
+    "AdaBoost, GBM, XGBoost, LightGBM, CatBoost"
+  )
+)
+
+knitr::kable(bb_df, caption = "Bagging vs. Boosting — the Two Big Families") %>%
+  kableExtra::kable_styling(full_width = TRUE, position = "center") %>%
+  kableExtra::column_spec(1, bold = TRUE)
+```
+
+---
+
+# Part 5: Stacking — Meta-Learning
+
+In **stacking** (or **stacked generalisation** [8]), we train several diverse base models, then we train a *new* model — the **meta-learner** — whose only inputs are the predictions of the base models.
+
+> **Plain English:** Stacking is "ensemble of ensembles". The base models are like specialists giving second opinions. The meta-learner is a **doctor** who reads all the specialists' reports and makes the final diagnosis.
+
+## 5.1 The Stacking Architecture
+
+```{r stacking-diagram, fig.height=4.8, fig.width=9, echo=FALSE}
+nodes <- tibble(
+  name = c("Decision Tree", "Random Forest", "SVM",
+           "Meta-Learner\n(Logistic Regression)",
+           "Final Prediction"),
+  x    = c(1, 1, 1, 3, 5),
+  y    = c(3, 2, 1, 2, 2),
+  type = c("base", "base", "base", "meta", "out")
+)
+
+edges <- tibble(
+  x = rep(1.4, 4),
+  y = c(3, 2, 1, 2),
+  xend = c(2.6, 2.6, 2.6, 4.4),
+  yend = c(2,   2,   2,   2)
+)
+
+ggplot() +
+  geom_segment(data = edges, aes(x = x, y = y, xend = xend, yend = yend),
+               arrow = arrow(length = unit(0.18, "inches")),
+               color = "grey40", linewidth = 1) +
+  geom_label(data = nodes, aes(x = x, y = y, label = name, fill = type),
+             size = 4.5, fontface = "bold", color = "white",
+             label.padding = unit(0.5, "lines"),
+             label.r = unit(0.4, "lines")) +
+  scale_fill_manual(values = c(base = "#1E88E5", meta = "#FB8C00", out = "#43A047"),
+                    guide = "none") +
+  xlim(0, 6) + ylim(0.4, 3.6) +
+  labs(
+    title = "Stacking: Base Models → Meta-Learner → Final Prediction",
+    subtitle = "The meta-learner is trained on the OUT-OF-FOLD predictions of the base models"
+  ) +
+  theme_void(base_size = 13)
+```
+
+## 5.2 A Working Example
+
+We use 5-fold cross-validation to generate **out-of-fold predictions** for each base model — these are the inputs the meta-learner gets to see during its own training.
+
+```{r stacking-impl}
+set.seed(MASTER_SEED)
+
+K <- 5
+folds <- createFolds(iris_train$Species, k = K, list = TRUE, returnTrain = FALSE)
+
+oof <- matrix(NA_character_, nrow = nrow(iris_train), ncol = 3)
+colnames(oof) <- c("dt", "rf", "svm")
+
+for (k in seq_len(K)) {
+  vidx <- folds[[k]]
+  tr   <- iris_train[-vidx, ]
+  vl   <- iris_train[ vidx, ]
+
+  m1 <- rpart(Species ~ ., data = tr, method = "class")
+  m2 <- randomForest(Species ~ ., data = tr, ntree = 200)
+  m3 <- svm(Species ~ ., data = tr)
+
+  oof[vidx, "dt"]  <- as.character(predict(m1, vl, type = "class"))
+  oof[vidx, "rf"]  <- as.character(predict(m2, vl))
+  oof[vidx, "svm"] <- as.character(predict(m3, vl))
+}
+
+meta_train <- data.frame(
+  dt  = factor(oof[, "dt"],  levels = levels(iris$Species)),
+  rf  = factor(oof[, "rf"],  levels = levels(iris$Species)),
+  svm = factor(oof[, "svm"], levels = levels(iris$Species)),
+  Species = iris_train$Species
+)
+
+meta_model <- train(Species ~ ., data = meta_train,
+                    method = "multinom", trace = FALSE)
+
+base_dt_test  <- predict(rpart(Species ~ ., data = iris_train, method = "class"),
+                         iris_test, type = "class")
+base_rf_test  <- predict(randomForest(Species ~ ., data = iris_train, ntree = 200),
+                         iris_test)
+base_svm_test <- predict(svm(Species ~ ., data = iris_train), iris_test)
+
+meta_test <- data.frame(
+  dt  = base_dt_test,
+  rf  = base_rf_test,
+  svm = base_svm_test
+)
+
+pred_stack <- predict(meta_model, meta_test)
+acc_stack  <- mean(pred_stack == iris_test$Species)
+cat(sprintf("Stacked ensemble accuracy: %.1f%%\n", 100 * acc_stack))
+```
+
+> **Why out-of-fold predictions?** If we let the meta-learner see the base models' predictions on rows the base models *trained on*, the meta-learner would just learn "trust this base model — it's always right" because the base models memorised those rows. Out-of-fold prediction simulates how the base models perform on **unseen** data, which is what the meta-learner really needs to learn from.
+
+---
+
+# Part 6: A Head-to-Head Comparison on Iris
+
+Let's bring all the ensembles together in one place.
+
+```{r big-comparison-classification}
+set.seed(MASTER_SEED)
+
+train_one <- function(method, train_data) {
+  switch(method,
+    "Decision Tree"   = rpart(Species ~ ., data = train_data, method = "class"),
+    "Random Forest"   = randomForest(Species ~ ., data = train_data, ntree = 200),
+    "SVM (RBF)"       = svm(Species ~ ., data = train_data),
+    "Bagged Trees"    = randomForest(Species ~ ., data = train_data, ntree = 200, mtry = ncol(train_data) - 1),
+    "Gradient Boost"  = gbm(Species ~ ., data = train_data, distribution = "multinomial",
+                            n.trees = 200, interaction.depth = 3, shrinkage = 0.05, verbose = FALSE)
+  )
+}
+
+predict_one <- function(method, model, test_data) {
+  switch(method,
+    "Decision Tree"   = predict(model, test_data, type = "class"),
+    "Random Forest"   = predict(model, test_data),
+    "SVM (RBF)"       = predict(model, test_data),
+    "Bagged Trees"    = predict(model, test_data),
+    "Gradient Boost"  = {
+      pp <- predict(model, test_data, n.trees = 200, type = "response")
+      factor(colnames(pp[ , , 1])[apply(pp[ , , 1], 1, which.max)],
+             levels = levels(test_data$Species))
+    }
+  )
+}
+
+methods <- c("Decision Tree", "Random Forest", "SVM (RBF)",
+             "Bagged Trees", "Gradient Boost")
+
+results_class <- map_dfr(methods, function(mt) {
+  t0    <- Sys.time()
+  m     <- train_one(mt, iris_train)
+  preds <- predict_one(mt, m, iris_test)
+  t1    <- Sys.time()
+  tibble(
+    Model = mt,
+    Type = if (mt %in% c("Decision Tree", "SVM (RBF)")) "Single Model" else "Ensemble",
+    Accuracy = mean(preds == iris_test$Species),
+    `Train+Predict (s)` = as.numeric(t1 - t0, units = "secs")
+  )
+})
+
+results_class <- bind_rows(
+  results_class,
+  tibble(Model = "Hard Voting",   Type = "Ensemble", Accuracy = acc_hard,
+         `Train+Predict (s)` = NA),
+  tibble(Model = "Soft Voting",   Type = "Ensemble", Accuracy = acc_soft,
+         `Train+Predict (s)` = NA),
+  tibble(Model = "Stacking",      Type = "Ensemble", Accuracy = acc_stack,
+         `Train+Predict (s)` = NA)
+)
+
+knitr::kable(results_class, digits = 4,
+             caption = "Iris: Single Models vs. Ensembles") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+```{r big-comparison-viz, fig.height=5.5, fig.width=10}
+ggplot(results_class, aes(x = reorder(Model, Accuracy), y = Accuracy, fill = Type)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f%%", Accuracy * 100)),
+            hjust = -0.1, fontface = "bold") +
+  coord_flip() +
+  scale_y_continuous(labels = percent, limits = c(0, 1.05)) +
+  scale_fill_manual(values = c("Single Model" = "#90A4AE", "Ensemble" = "#1E88E5")) +
+  labs(
+    title = "Ensembles vs. Single Models on Iris",
+    subtitle = "On easy data, all methods are competitive; ensembles really shine on harder problems",
+    x = NULL, y = "Test Accuracy", fill = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+## 6.1 Confusion Matrices Side-by-Side
+
+```{r cm-grid, fig.height=8, fig.width=10}
+quick_cm <- function(preds, actual, title) {
+  cmt <- as.data.frame(table(Predicted = preds, Actual = actual))
+  ggplot(cmt, aes(x = Actual, y = Predicted, fill = Freq)) +
+    geom_tile(color = "white", linewidth = 1) +
+    geom_text(aes(label = Freq), fontface = "bold", size = 5) +
+    scale_fill_gradient(low = "white", high = "#1E88E5") +
+    labs(title = title, x = "Actual", y = "Predicted") +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "none", plot.title = element_text(face = "bold"))
+}
+
+cm_dt    <- quick_cm(pred_dt,    iris_test$Species, "Decision Tree")
+cm_rf    <- quick_cm(pred_rf,    iris_test$Species, "Random Forest")
+cm_svm   <- quick_cm(pred_svm,   iris_test$Species, "SVM (RBF)")
+cm_hard  <- quick_cm(pred_hard,  iris_test$Species, "Hard Voting")
+cm_soft  <- quick_cm(pred_soft,  iris_test$Species, "Soft Voting")
+cm_stack <- quick_cm(pred_stack, iris_test$Species, "Stacking")
+
+grid.arrange(cm_dt, cm_rf, cm_svm, cm_hard, cm_soft, cm_stack,
+             ncol = 3,
+             top = "Confusion Matrices — All Models on Iris Test Set")
+```
+
+---
+
+# Part 7: Regression Ensembles
+
+Ensembles work just as well for regression — we average predictions instead of voting.
+
+We use the built-in `Boston` housing data from `MASS` to predict median house value (`medv`).
+
+```{r reg-data}
+data(Boston, package = "MASS")
+set.seed(MASTER_SEED)
+ridx <- sample(seq_len(nrow(Boston)), 0.7 * nrow(Boston))
+b_train <- Boston[ridx, ]
+b_test  <- Boston[-ridx, ]
+```
+
+## 7.1 Three Base Regressors
+
+```{r reg-base}
+set.seed(MASTER_SEED)
+
+m_lm   <- lm(medv ~ ., data = b_train)
+m_tree <- rpart(medv ~ ., data = b_train, control = rpart.control(cp = 0.01))
+m_rfr  <- randomForest(medv ~ ., data = b_train, ntree = 300)
+m_gbmr <- gbm(medv ~ ., data = b_train, distribution = "gaussian",
+              n.trees = 300, interaction.depth = 3, shrinkage = 0.05, verbose = FALSE)
+
+p_lm   <- predict(m_lm,   b_test)
+p_tree <- predict(m_tree, b_test)
+p_rfr  <- predict(m_rfr,  b_test)
+p_gbmr <- predict(m_gbmr, b_test, n.trees = 300)
+
+p_avg <- (p_lm + p_tree + p_rfr) / 3
+
+rmse <- function(pred, actual) sqrt(mean((pred - actual)^2))
+
+reg_results <- tibble(
+  Model = c("Linear Regression", "Decision Tree", "Random Forest",
+            "Gradient Boost", "Simple Average Ensemble (LM + Tree + RF)"),
+  Type  = c("Single Model", "Single Model", "Ensemble", "Ensemble", "Ensemble"),
+  RMSE  = c(rmse(p_lm, b_test$medv),
+            rmse(p_tree, b_test$medv),
+            rmse(p_rfr, b_test$medv),
+            rmse(p_gbmr, b_test$medv),
+            rmse(p_avg, b_test$medv)),
+  R2    = c(cor(p_lm,   b_test$medv)^2,
+            cor(p_tree, b_test$medv)^2,
+            cor(p_rfr,  b_test$medv)^2,
+            cor(p_gbmr, b_test$medv)^2,
+            cor(p_avg,  b_test$medv)^2)
+)
+
+knitr::kable(reg_results, digits = 3,
+             caption = "Boston Housing — Regression Ensembles") %>%
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+```
+
+```{r reg-viz, fig.height=5, fig.width=10}
+reg_long <- tibble(
+  Model = rep(c("Linear", "Tree", "RF", "GBM", "Avg Ensemble"),
+              each = nrow(b_test)),
+  Predicted = c(p_lm, p_tree, p_rfr, p_gbmr, p_avg),
+  Actual    = rep(b_test$medv, 5)
+)
+
+ggplot(reg_long, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.5, color = "#1E88E5") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  facet_wrap(~ Model, ncol = 5) +
+  labs(
+    title = "Predicted vs. Actual Median House Value",
+    subtitle = "Closer to the red line = better. Random Forest & GBM cluster tightest.",
+    x = "Actual medv", y = "Predicted medv"
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+## 7.2 Why Tree Ensembles Beat Single Trees on Regression
+
+```{r reg-rf-vs-tree, fig.height=4.5, fig.width=9}
+err_df <- tibble(
+  residual = c(p_tree - b_test$medv, p_rfr - b_test$medv),
+  Model = rep(c("Single Tree", "Random Forest"), each = length(p_tree))
+)
+
+ggplot(err_df, aes(x = residual, fill = Model)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 30) +
+  scale_fill_manual(values = c("Single Tree" = "#E53935", "Random Forest" = "#1E88E5")) +
+  labs(
+    title = "Distribution of Residuals — Single Tree vs. Random Forest",
+    subtitle = "Tighter, more centred distribution = lower variance and bias",
+    x = "Residual (predicted - actual)", y = "Count"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Part 8: A Decision Guide — Which Ensemble Should I Use?
+
+```{r decision-guide-table, echo=FALSE}
+guide_df <- data.frame(
+  Situation = c(
+    "Quick baseline that almost always works",
+    "Highly accurate model for tabular data competitions",
+    "Models keep overfitting your data",
+    "Models are too simple and underfit",
+    "You want to combine very different model families",
+    "You only have a few training rows",
+    "You need feature importance + interpretability",
+    "You need GPU-scale speed on huge tabular data"
+  ),
+  Recommended = c(
+    "Random Forest",
+    "Gradient Boosting (XGBoost / LightGBM / CatBoost)",
+    "Bagging / Random Forest",
+    "Boosting (AdaBoost / GBM)",
+    "Voting (hard or soft)",
+    "Bagging — recycles data via bootstrap",
+    "Random Forest — built-in importance and OOB",
+    "LightGBM / XGBoost on GPU"
+  ),
+  Why = c(
+    "Almost no tuning needed, robust to noise, gives OOB error for free",
+    "Often #1 on Kaggle leaderboards with proper tuning",
+    "Averaging many models cancels their individual fluctuations",
+    "Each round corrects previous errors — drives bias down",
+    "Different models make different errors → vote averages them out",
+    "Each bag re-samples N rows, so every model sees a full-size dataset",
+    "Splits are interpretable and importance is a natural by-product",
+    "Histogram-based and parallelised across cores/GPU"
+  )
+)
+
+knitr::kable(guide_df, caption = "Picking the Right Ensemble for the Job") %>%
+  kableExtra::kable_styling(full_width = TRUE, position = "center") %>%
+  kableExtra::column_spec(1, bold = TRUE)
+```
+
+> **One Rule of Thumb:** Start with a **Random Forest**. It is fast, robust, almost never overfits, and gives you a strong baseline plus feature importance. Then, if you need to squeeze out more accuracy, move to **Gradient Boosting** (XGBoost / LightGBM / CatBoost) and tune it carefully. Reserve **stacking** for the final 1–2% of accuracy in competition settings.
+
+---
+
+# Knowledge Check
+
+<details>
+<summary>**Question 1:** Why do we say bagging reduces variance but not bias?</summary>
+**Answer:** Averaging predictions of many models trained on bootstrap samples cancels out random fluctuations (variance), but if the underlying algorithm is biased (e.g., always predicts a linear trend when the truth is non-linear), then **all** the models in the ensemble are biased in the same way, and averaging cannot remove a systematic error. Boosting, on the other hand, focuses on previously misclassified examples and can reduce both bias and variance.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 2:** What is an "Out-of-Bag" (OOB) sample, and why is it useful?</summary>
+**Answer:** When you draw a bootstrap sample of size N **with replacement** from a dataset of N rows, on average about 36.8% of rows are *not* selected. Those left-out rows are the OOB sample for that particular bootstrap. Each tree in a Random Forest is therefore tested on its own OOB rows for free — no separate test split needed. The OOB error rate is a strong, unbiased estimate of generalisation error.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 3:** When does soft voting beat hard voting?</summary>
+**Answer:** Soft voting beats hard voting when the base models output **well-calibrated probabilities** (i.e., when a model says "80% confident" it's actually right ~80% of the time). Soft voting weights confident predictions more, capturing extra information that hard voting throws away. If a model produces miscalibrated probabilities (e.g., a Decision Tree often outputs only 0% or 100%), soft voting may be no better — or even worse — than hard voting.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 4:** Why is boosting harder to parallelise than bagging?</summary>
+**Answer:** In bagging, each model is trained independently on its own bootstrap sample, so all models can be trained in parallel on different cores or machines. In boosting, model $m+1$ is trained on a dataset whose **weights depend on the errors of model $m$** — so model $m+1$ literally cannot start until model $m$ has finished. The training is inherently sequential. (Within a single boosting iteration, however, the tree-fitting itself can be parallelised by feature, which is what XGBoost and LightGBM do.)
+</details>
+
+<br>
+
+<details>
+<summary>**Question 5:** You stack five models and the meta-learner picks one of them and ignores the rest. What went wrong?</summary>
+**Answer:** Probably one of two things:
+1. **Lack of diversity** — all five base models are essentially making the same predictions, so the meta-learner correctly concludes the others add no information.
+2. **Data leakage** — you forgot to use *out-of-fold* predictions when training the meta-learner. The base models had already seen those rows, so the meta-learner is just memorising "trust whichever base model overfitted hardest to this row," which is not a real signal.
+The fix in both cases is the same: ensure base models are **diverse** (different families, different hyperparameters, different feature subsets) and always use **K-fold out-of-fold predictions** as the meta-learner's input.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 6:** Why does Gradient Boosting have a higher risk of overfitting than Random Forest?</summary>
+**Answer:** Random Forest **averages** independently grown trees, which dampens noise. Gradient Boosting **sequentially** builds trees that fit the residual errors of the current ensemble. If you keep adding trees, the ensemble eventually fits the noise as well as the signal — that's overfitting. The standard defences are: (a) use a small **learning rate** (`shrinkage`), (b) keep trees **shallow** (small `interaction.depth`), (c) use **early stopping** based on a held-out validation set, and (d) **subsample** rows or columns at each round (stochastic gradient boosting).
+</details>
+
+---
+
+# Summary
+
+Ensembles are the single most reliable upgrade you can make to a machine learning system. Pick almost any tabular ML benchmark, look at the top of the leaderboard, and you will see Random Forests, Gradient Boosting, and stacked ensembles dominating.
+
+**Key takeaways:**
+
+1. **An ensemble is a committee.** It works when its members are *diverse, better than random, and reasonably independent*.
+2. **Voting** (hard or soft) is the simplest ensemble — combine different model families and let them vote.
+3. **Bagging** trains the *same* algorithm on *different* bootstrap samples and averages the results — it reduces variance.
+4. **Random Forests** are bagging + random feature selection at each split, plus free OOB error.
+5. **Boosting** trains weak models *sequentially*, each one fixing the previous model's mistakes — it reduces bias.
+6. **Stacking** trains a meta-learner whose only inputs are out-of-fold predictions from the base models — squeezing out the last few percent of accuracy.
+7. There is no free lunch — but if there were, it would taste a lot like a Random Forest.
+
+> *"In practice, the best results have been obtained using ensembles of many models."* — Scikit-learn Ensemble User Guide [3]
+
+---
+
+# References
+
+[1] T. G. Dietterich, "Ensemble methods in machine learning," in *Multiple Classifier Systems*, vol. 1857, Lecture Notes in Computer Science. Berlin: Springer, 2000, pp. 1–15.
+
+[2] F. Galton, "Vox populi," *Nature*, vol. 75, no. 1949, pp. 450–451, Mar. 1907.
+
+[3] scikit-learn developers, "1.11. Ensembles: Gradient boosting, random forests, bagging, voting, stacking," *scikit-learn 1.8.0 documentation*, 2026. [Online]. Available: https://scikit-learn.org/stable/modules/ensemble.html
+
+[4] L. Breiman, "Bagging predictors," *Machine Learning*, vol. 24, no. 2, pp. 123–140, 1996.
+
+[5] L. Breiman, "Random forests," *Machine Learning*, vol. 45, no. 1, pp. 5–32, 2001.
+
+[6] Y. Freund and R. E. Schapire, "A decision-theoretic generalization of on-line learning and an application to boosting," *Journal of Computer and System Sciences*, vol. 55, no. 1, pp. 119–139, 1997.
+
+[7] J. H. Friedman, "Greedy function approximation: A gradient boosting machine," *Annals of Statistics*, vol. 29, no. 5, pp. 1189–1232, 2001.
+
+[8] D. H. Wolpert, "Stacked generalization," *Neural Networks*, vol. 5, no. 2, pp. 241–259, 1992.
+
+[9] A. Géron, *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow*, 2nd ed. Sebastopol, CA: O'Reilly Media, 2019, ch. 7: Ensemble Learning and Random Forests.
+
+[10] GeeksforGeeks, "Ensemble learning — A comprehensive guide," 2026. [Online]. Available: https://www.geeksforgeeks.org/machine-learning/a-comprehensive-guide-to-ensemble-learning/
+
+[11] Z. Huang, "seedhash: Deterministic Seed Generation from String Inputs Using MD5 Hashing," R package, 2026. [Online]. Available: https://github.com/roozbeh412/seedhash
