@@ -1,25 +1,33 @@
 # Week 10: Model Evaluation — How Good Is Your Model, Really?
 
-## Lecture Materials
+## Access Week 10 Tutorials
 
-### Viewing the Presentations
+### Quick Links
 
-This week has an HTML tutorial and lecture slides available online:
+| Resource | Link |
+|---|---|
+| **Hands-on Tutorial** (HTML, recommended) | **[Open Week 10 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html)** |
+| Tutorial source (RMarkdown) | [Week10-ModelEvaluation-Tutorial.Rmd](./Week10-ModelEvaluation-Tutorial.Rmd) |
+| Tutorial (alternative viewer) | [htmlpreview.github.io](https://htmlpreview.github.io/?https://github.com/roozbeh412/data_sciences/blob/main/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html) |
+| Lecture Slides (PowerPoint) | [ANLY530Lecture11_Model_evaluation.pptx](./ANLY530Lecture11_Model_evaluation.pptx) |
+| Course Home (all weeks) | [roozbeh412.github.io/data_sciences/#530](https://roozbeh412.github.io/data_sciences/#530) |
+
+### Access Options
 
 #### 1. Model Evaluation (Hands-on Tutorial)
 
-**Option 1: View Online (GitHub Pages - Recommended)**
+**Option 1: View Online (GitHub Pages — Recommended)**
 - [View Tutorial Online](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html)
 
 **Option 2: Alternative Online Viewer**
 - [View via htmlpreview](https://htmlpreview.github.io/?https://github.com/roozbeh412/data_sciences/blob/main/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html)
 
 **Option 3: Download and Open Locally**
-- Download `Week10-ModelEvaluation-Tutorial.html` and open it in your web browser
+- Download [`Week10-ModelEvaluation-Tutorial.html`](./Week10-ModelEvaluation-Tutorial.html) and open it in your web browser
 
 #### 2. Lecture Slides
 
-- Download `ANLY530Lecture11_Model_evaluation.pptx` from this directory.
+- Download [`ANLY530Lecture11_Model_evaluation.pptx`](./ANLY530Lecture11_Model_evaluation.pptx) from this directory.
 
 ---
 
