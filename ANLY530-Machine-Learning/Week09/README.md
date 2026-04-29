@@ -1,25 +1,33 @@
 # Week 09: Dimensionality Reduction — PCA, Factor Analysis & LDA
 
-## Lecture Materials
+## Access Week 09 Tutorials
 
-### Viewing the Presentations
+### Quick Links
 
-This week has an HTML tutorial and lecture slides available online:
+| Resource | Link |
+|---|---|
+| **Hands-on Tutorial** (HTML, recommended) | **[Open Week 09 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html)** |
+| Tutorial source (RMarkdown) | [Week09-DimensionalityReduction-Tutorial.Rmd](./Week09-DimensionalityReduction-Tutorial.Rmd) |
+| Tutorial (alternative viewer) | [htmlpreview.github.io](https://htmlpreview.github.io/?https://github.com/roozbeh412/data_sciences/blob/main/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html) |
+| Lecture Slides (PowerPoint) | [ANLY530Lecture10_PFetureEngineering2.pptx](./ANLY530Lecture10_PFetureEngineering2.pptx) |
+| Course Home (all weeks) | [roozbeh412.github.io/data_sciences/#530](https://roozbeh412.github.io/data_sciences/#530) |
+
+### Access Options
 
 #### 1. Dimensionality Reduction (Hands-on Tutorial)
 
-**Option 1: View Online (GitHub Pages - Recommended)**
+**Option 1: View Online (GitHub Pages — Recommended)**
 - [View Tutorial Online](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html)
 
 **Option 2: Alternative Online Viewer**
 - [View via htmlpreview](https://htmlpreview.github.io/?https://github.com/roozbeh412/data_sciences/blob/main/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html)
 
 **Option 3: Download and Open Locally**
-- Download `Week09-DimensionalityReduction-Tutorial.html` and open it in your web browser
+- Download [`Week09-DimensionalityReduction-Tutorial.html`](./Week09-DimensionalityReduction-Tutorial.html) and open it in your web browser
 
 #### 2. Lecture Slides
 
-- Download `ANLY530Lecture10_PFetureEngineering2.pptx` from this directory.
+- Download [`ANLY530Lecture10_PFetureEngineering2.pptx`](./ANLY530Lecture10_PFetureEngineering2.pptx) from this directory.
 
 ---
 
