@@ -2,7 +2,7 @@
 
 **Course**: ANLY 530 — Principles & Applications of Machine Learning
 **Institution**: Harrisburg University
-**Author**: Roozbeh Sadeghian, PhD
+**Author**: Roozbeh Sadeghian, PhD and Ziyuan Huang, PhD
 **Term**: Late Spring 2026 (March 14 – June 18, 2026)
 **Website**: [https://roozbeh412.github.io/data_sciences/](https://roozbeh412.github.io/data_sciences/#530)
 
