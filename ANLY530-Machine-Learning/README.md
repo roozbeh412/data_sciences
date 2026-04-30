@@ -36,9 +36,9 @@ Quick links to every week. Click **📄 Tutorial** to open the live HTML, or **�
 | 08   | Preprocessing & Feature Selection               | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week08/Week08-FeatureEngineering-Tutorial.html)  | [📂 Folder](Week08/) |
 | 09   | Feature Engineering & Dimensionality Reduction  | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week09/Week09-DimensionalityReduction-Tutorial.html)  | [📂 Folder](Week09/) |
 | 10   | Model Evaluation & Selection                    | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week10/Week10-ModelEvaluation-Tutorial.html) | [📂 Folder](Week10/) |
-| 11   | Advanced Ensemble Methods                       | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week11/) |
-| 12   | Introduction to Neural Networks                 | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week12/) |
-| 13   | Final Project Wrap-Up & Review                  | 🔜 Coming Soon                                                                                                       | [📂 Folder](Week13/) |
+| 11   | Advanced Ensemble Methods                       | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week11/Week11-EnsembleModeling-Tutorial.html)  | [📂 Folder](Week11/) |
+| 12   | Introduction to Neural Networks                 | [📄 Tutorial](https://roozbeh412.github.io/data_sciences/ANLY530-Machine-Learning/Week12/Week12-NeuralNetworks-Tutorial.html)  | [📂 Folder](Week12/) |
+| 13   | Final Project Wrap-Up & Review                  |                                                                                                        | [📂 Folder](Week13/) |
 
 
 ---
@@ -587,5 +587,5 @@ rmarkdown::render("Week01/01_Intro_to_Machine_Learning.rmd")
 
 ---
 
-*© 2026 Ziyuan Huang | ANLY 530 Machine Learning | Harrisburg University*
+*© 2026 Roozbeh Sadeghian | ANLY 530 Machine Learning | Harrisburg University*
 *Built with Python, R, Scikit-Learn, Keras, and TensorFlow*
