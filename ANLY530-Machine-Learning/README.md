@@ -587,5 +587,5 @@ rmarkdown::render("Week01/01_Intro_to_Machine_Learning.rmd")
 
 ---
 
-*© 2026 Roozbeh Sadeghian | ANLY 530 Machine Learning | Harrisburg University*
+*© 2026 Roozbeh Sadeghian & Ziyuan Huang | ANLY 530 Machine Learning | Harrisburg University*
 *Built with Python, R, Scikit-Learn, Keras, and TensorFlow*
