@@ -581,9 +581,9 @@ rmarkdown::render("Week01/01_Intro_to_Machine_Learning.rmd")
 
 ## 🔗 Links
 
-- 🌐 **Course Website**: [https://melhzy.github.io/data_sciences/](https://melhzy.github.io/data_sciences/#530)
-- 📁 **GitHub Repository**: [https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning](https://github.com/melhzy/data_sciences/tree/main/ANLY530-Machine-Learning)
-- 📊 **ANLY 500 Analytics I**: [https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I](https://github.com/melhzy/data_sciences/tree/main/ANLY500-Analytics-I)
+- 🌐 **Course Website**: [https://roozbeh412.github.io/data_sciences/](https://melhzy.github.io/data_sciences/#530)
+- 📁 **GitHub Repository**: [https://github.com/roozbeh412/data_sciences/tree/main/ANLY530-Machine-Learning](https://github.com/roozbeh412/data_sciences/tree/main/ANLY530-Machine-Learning)
+
 
 ---
 
