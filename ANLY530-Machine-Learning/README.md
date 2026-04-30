@@ -66,27 +66,7 @@ Overview of the ML landscape: supervised, unsupervised, and reinforcement learni
 
 ---
 
-### [Week 02: Python &amp; R for Machine Learning](Week02/)
-
-Setting up the ML environment. Basics of Python and R for data science, reproducible reporting with RMarkdown + reticulate, and the core scientific Python stack.
-
-**Topics Covered:**
-
-- Installation: R, RStudio, Anaconda, Jupyter
-- Python and R basics: data types, control flow, functions
-- RMarkdown + reticulate for reproducible reports
-- Key libraries: NumPy, Pandas, Matplotlib, Scikit-Learn, tidyverse, ggplot2
-- End-to-end ML project setup
-
-**Reading**: Géron Ch. 2 — End-to-End ML Project (setup sections)
-
-**Materials:**
-
-- 📂 [Week 02 Folder](Week02/)
-
----
-
-### [Week 03: Decision Trees](Week03/)
+### [Week 02: Decision Trees](Week02/)
 
 How decision trees learn, split data, and make predictions. The CART algorithm, Gini impurity vs. entropy, overfitting and pruning, and visualizing decision boundaries.
 
@@ -104,11 +84,11 @@ How decision trees learn, split data, and make predictions. The CART algorithm, 
 
 **Materials:**
 
-- 📂 [Week 03 Folder](Week03/)
+- 📂 [Week 02 Folder](Week02/)
 
 ---
 
-### [Week 04: Random Forests &amp; Ensemble Methods](Week04/)
+### [Week 03: Random Forests &amp; Ensemble Methods](Week03/)
 
 From a single decision tree to an ensemble. Bagging, feature randomness, out-of-bag evaluation, feature importance, and an introduction to boosting.
 
@@ -125,11 +105,11 @@ From a single decision tree to an ensemble. Bagging, feature randomness, out-of-
 
 **Materials:**
 
-- 📂 [Week 04 Folder](Week04/)
+- 📂 [Week 03 Folder](Week03/)
 
 ---
 
-### [Week 05: Regression](Week05/)
+### [Week 04: Regression](Week04/)
 
 Linear regression from first principles through regularized models. Gradient descent, the bias-variance tradeoff, polynomial regression, and logistic regression for classification.
 
@@ -148,11 +128,11 @@ Linear regression from first principles through regularized models. Gradient des
 
 **Materials:**
 
-- 📂 [Week 05 Folder](Week05/)
+- 📂 [Week 04 Folder](Week04/)
 
 ---
 
-### [Week 06: Support Vector Machines](Week06/)
+### [Week 05: Support Vector Machines](Week05/)
 
 Maximum-margin classifiers, the kernel trick, and SVMs for regression. Hard and soft margin classification, the RBF kernel, and Support Vector Regression (SVR).
 
@@ -170,11 +150,11 @@ Maximum-margin classifiers, the kernel trick, and SVMs for regression. Hard and 
 
 **Materials:**
 
-- 📂 [Week 06 Folder](Week06/)
+- 📂 [Week 05 Folder](Week05/)
 
 ---
 
-### [Week 07: Probabilistic Learning — Naïve Bayes &amp; Classification Metrics](Week07/)
+### [Week 06: Probabilistic Learning — Naïve Bayes &amp; Classification Metrics](Week06/)
 
 Bayes' theorem applied to classification. The Naïve Bayes family of classifiers and a comprehensive deep dive into evaluation metrics: confusion matrix, precision, recall, F1, and ROC-AUC.
 
@@ -194,11 +174,11 @@ Bayes' theorem applied to classification. The Naïve Bayes family of classifiers
 
 **Materials:**
 
-- 📂 [Week 07 Folder](Week07/)
+- 📂 [Week 06 Folder](Week06/)
 
 ---
 
-### [Week 08: Unsupervised Learning](Week08/)
+### [Week 07: Unsupervised Learning](Week07/)
 
 Discovering structure in unlabeled data. K-Means and DBSCAN clustering, hierarchical clustering, anomaly detection, density estimation, and Gaussian Mixture Models.
 
@@ -216,11 +196,11 @@ Discovering structure in unlabeled data. K-Means and DBSCAN clustering, hierarch
 
 **Materials:**
 
-- 📂 [Week 08 Folder](Week08/)
+- 📂 [Week 07 Folder](Week07/)
 
 ---
 
-### [Week 09: Preprocessing &amp; Feature Selection](Week09/)
+### [Week 08: Preprocessing &amp; Feature Selection](Week08/)
 
 Building robust, reproducible ML pipelines with Scikit-Learn. Handling messy real-world data, scaling, encoding, class imbalance, and systematic feature selection strategies.
 
@@ -239,11 +219,11 @@ Building robust, reproducible ML pipelines with Scikit-Learn. Handling messy rea
 
 **Materials:**
 
-- 📂 [Week 09 Folder](Week09/)
+- 📂 [Week 08 Folder](Week08/)
 
 ---
 
-### [Week 10: Feature Engineering &amp; Dimensionality Reduction](Week10/)
+### [Week 09: Feature Engineering &amp; Dimensionality Reduction](Week09/)
 
 Creating informative features and reducing dimensionality. PCA from eigenvalues to explained variance, t-SNE for visualization, and practical feature engineering patterns.
 
@@ -262,11 +242,11 @@ Creating informative features and reducing dimensionality. PCA from eigenvalues 
 
 **Materials:**
 
-- 📂 [Week 10 Folder](Week10/)
+- 📂 [Week 09 Folder](Week09/)
 
 ---
 
-### [Week 11: Model Evaluation &amp; Selection](Week11/)
+### [Week 10: Model Evaluation &amp; Selection](Week10/)
 
 Rigorous, unbiased model evaluation. Cross-validation strategies, systematic hyperparameter search, learning and validation curves, and avoiding common pitfalls.
 
@@ -285,11 +265,11 @@ Rigorous, unbiased model evaluation. Cross-validation strategies, systematic hyp
 
 **Materials:**
 
-- 📂 [Week 11 Folder](Week11/)
+- 📂 [Week 10 Folder](Week10/)
 
 ---
 
-### [Week 12: Advanced Ensemble Methods](Week12/)
+### [Week 11: Advanced Ensemble Methods](Week11/)
 
 Gradient boosting in depth — the algorithm behind XGBoost and LightGBM — plus stacking and blending to combine models.
 
@@ -307,11 +287,11 @@ Gradient boosting in depth — the algorithm behind XGBoost and LightGBM — plu
 
 **Materials:**
 
-- 📂 [Week 12 Folder](Week12/)
+- 📂 [Week 11 Folder](Week11/)
 
 ---
 
-### [Week 13: Introduction to Neural Networks](Week13/)
+### [Week 12: Introduction to Neural Networks](Week12/)
 
 From the perceptron to modern deep learning. Building, training, and evaluating feedforward neural networks with Keras.
 
@@ -330,11 +310,11 @@ From the perceptron to modern deep learning. Building, training, and evaluating 
 
 **Materials:**
 
-- 📂 [Week 13 Folder](Week13/)
+- 📂 [Week 12 Folder](Week12/)
 
 ---
 
-### [Week 14: Final Project Wrap-Up &amp; Review](Week14/)
+### [Week 13: Final Project Wrap-Up &amp; Review](Week13/)
 
 Course review, key takeaways, common pitfalls, and group Q&A. Final project report and recorded presentations due.
 
@@ -349,7 +329,7 @@ Course review, key takeaways, common pitfalls, and group Q&A. Final project repo
 
 **Materials:**
 
-- 📂 [Week 14 Folder](Week14/)
+
 
 ---
 
@@ -527,19 +507,18 @@ ANLY530-Machine-Learning/
 ├── Week01/                            # Intro to Machine Learning
 │   ├── 01_Intro_to_Machine_Learning.rmd
 │   └── 01_Intro_to_Machine_Learning.html
-├── Week02/                            # Python & R for ML
-├── Week03/                            # Decision Trees
-├── Week04/                            # Random Forests & Ensembles
-├── Week05/                            # Regression
-├── Week06/                            # Support Vector Machines
-├── Week07/                            # Naïve Bayes & Classification Metrics
-├── Week08/                            # Unsupervised Learning
-├── Week09/                            # Preprocessing & Feature Selection
-├── Week10/                            # Feature Engineering & PCA
-├── Week11/                            # Model Evaluation & Selection
-├── Week12/                            # Advanced Ensemble Methods
-├── Week13/                            # Introduction to Neural Networks
-└── Week14/                            # Final Project Wrap-Up
+├── Week02/                            # Decision Trees
+├── Week03/                            # Random Forests & Ensembles
+├── Week04/                            # Regression
+├── Week05/                            # Support Vector Machines
+├── Week06/                            # Naïve Bayes & Classification Metrics
+├── Week07/                            # Unsupervised Learning
+├── Week08/                            # Preprocessing & Feature Selection
+├── Week09/                            # Feature Engineering & PCA
+├── Week10/                            # Model Evaluation & Selection
+├── Week11/                            # Advanced Ensemble Methods
+├── Week12/                            # Introduction to Neural Networks
+└── Week13/                            # Final Project Wrap-Up
 ```
 
 ---
@@ -557,7 +536,7 @@ ANLY530-Machine-Learning/
 2. **Install Python via Anaconda** (see Software Requirements above)
 3. **Install R and RStudio** (see Software Requirements above)
 4. **Open the tutorial**: Navigate to the relevant `Week##/` folder and open the `.rmd` file in RStudio, or open the compiled `.html` file directly in a browser
-5. **View online**: All tutorials are hosted at [https://melhzy.github.io/data_sciences/](https://melhzy.github.io/data_sciences/#530) — click the **ANLY 530** tab
+5. **View online**: All tutorials are hosted at [https://roozbeh412.github.io/data_sciences/](https://roozbeh412.github.io/data_sciences/#530) — click the **ANLY 530** tab
 
 ### For Instructors / Collaborators
 
