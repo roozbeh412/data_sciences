@@ -1,0 +1,626 @@
+---
+title: "Week 12: Neural Networks — Layers, Signals, and Learning from Examples"
+author: "Roozbeh Sadeghian"
+date: "Last Updated: `r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+    mathjax: "https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+---
+
+```{r setup, include=FALSE}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  fig.width = 8,
+  fig.height = 6
+)
+
+if (!requireNamespace("seedhash", quietly = TRUE)) {
+  if (!requireNamespace("remotes", quietly = TRUE)) {
+    install.packages("remotes", repos = "https://cloud.r-project.org")
+  }
+  remotes::install_github("roozbeh412/seedhash", subdir = "R", upgrade = "never")
+}
+```
+
+```{r seeds, include=TRUE}
+library(seedhash)
+gen <- SeedHashGenerator$new("ANLY530-Week12-NeuralNetworks")
+MASTER_SEED <- gen$generate_seeds(1)
+set.seed(MASTER_SEED)
+```
+
+```{r seedhash-info, echo=FALSE, results='asis'}
+cat(sprintf(
+  "**Random Seed Source:** `seedhash` package — input string: `\"ANLY530-Week12-NeuralNetworks\"` → seed: `%d`\n\n",
+  MASTER_SEED
+))
+```
+
+# Introduction
+
+This week we study **neural networks**: flexible models built from many tiny calculators (**neurons**) wired together. The wiring strengths (**weights**) and small offsets (**biases**) are learned from data—much like you adjusted knobs when tuning a radio until the station came in clearly.
+
+> **Plain English:** A neural network is a **recipe machine**. Raw ingredients (your features) go in one side. Each neuron mixes its inputs with learned weights, adds a bias, and passes the result through an **activation function**. The final layer produces a prediction (a class label, a probability, or a number). Training repeatedly adjusts weights so predictions move closer to the correct answers.
+
+Neural networks appear under buzzwords like **deep learning** or **AI**, but the core ideas match what you already know from regression and logistic regression: combine inputs linearly, then apply a nonlinear transform. The difference is **depth** and **width**: many chained transformations let the model represent rich, curved boundaries instead of a single straight line or plane.
+
+These beginner-friendly articles explain the same story with worked examples: GeeksforGeeks [1] and Victor Zhou’s feedforward walk-through [2]. Your lecture slides (`ANLY530Lecture13_NeuralNetworks.pptx`) anchor the course terminology.
+
+**Learning objectives**
+
+1. Name the parts of a network (**input / hidden / output** layers, **weights**, **biases**, **activations**).
+2. Trace **forward propagation** with a small numeric example.
+3. Interpret common **activation functions** and why **nonlinearity** matters (the XOR demo).
+4. Connect **loss**, **gradients**, **backpropagation**, and **gradient descent** with pictures—noticing how **learning rate** changes the path.
+5. Train a simple **feedforward** classifier in R (`nnet::nnet`) and compare it to **multinomial logistic regression** (`nnet::multinom`).
+6. Discuss **capacity**, **overfitting**, and the **black-box** trade-off honestly.
+
+## Required packages
+
+```{r load-packages}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  dplyr,
+  tibble,
+  purrr,
+  ggplot2,
+  nnet,
+  scales,
+  knitr,
+  RColorBrewer
+)
+```
+
+---
+
+# Part 1: Vocabulary in plain English
+
+| Term | Plain English |
+|:-----|:--------------|
+| **Neuron** | One computational unit: weighted sum of inputs + bias → activation. |
+| **Layer** | A row of neurons at the same depth in the network. |
+| **Input layer** | Holds your measured features (often shown as nodes for bookkeeping—not always “computed”). |
+| **Hidden layer** | Layers between input and output; they build intermediate representations. |
+| **Output layer** | Produces the prediction (e.g., class probabilities or a numeric value). |
+| **Weight** | How strongly an input influences the next neuron. Learned from data. |
+| **Bias** | Lets the neuron shift its activation up or down even when inputs are zero. Also learned. |
+| **Activation function** | Nonlinear squeeze/split (sigmoid, ReLU, …) that lets the network bend boundaries. |
+| **Forward pass** | Data flows input → hidden → output with current weights. |
+| **Loss** | A score measuring how wrong predictions are; training tries to lower it. |
+| **Backpropagation** | The recipe that computes how each weight affected the loss (uses the chain rule). |
+| **Epoch** | One full sweep through the training data (possibly in mini-batches). |
+| **Learning rate** | Step size when updating weights; too large oscillates, too small crawls. |
+
+---
+
+# Part 2: One neuron = logistic regression’s cousin
+
+A single neuron computes
+
+$$z = w_1 x_1 + w_2 x_2 + \cdots + w_p x_p + b, \qquad a = f(z)$$
+
+where $f$ is the activation. If $f$ is the **sigmoid** $\sigma(z) = 1/(1+e^{-z})$, one neuron is exactly **logistic regression** logic: a weighted sum followed by a probability-friendly squash into $(0,1)$.
+
+```{r single-neuron-example}
+# Victor Zhou’s toy numbers: w = [0, 1], b = 4, x = [2, 3]
+w <- c(0, 1)
+b <- 4
+x <- c(2, 3)
+z <- sum(w * x) + b
+sigmoid <- function(z) 1 / (1 + exp(-z))
+a <- sigmoid(z)
+cat(sprintf("Weighted sum z = %.4f; sigmoid(z) = %.4f\n", z, a))
+```
+
+```{r activation-comparison, fig.height=5, fig.width=10}
+zseq <- seq(-6, 6, length.out = 400)
+nz <- length(zseq)
+act_df <- tibble(
+  zgrid = rep(zseq, 3),
+  activation = factor(
+    rep(c("sigmoid", "tanh", "relu"), each = nz),
+    levels = c("sigmoid", "tanh", "relu")
+  ),
+  value = c(1 / (1 + exp(-zseq)), tanh(zseq), pmax(0, zseq))
+)
+
+ggplot(act_df, aes(x = zgrid, y = value, color = activation)) +
+  geom_line(size = 1.1) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  geom_vline(xintercept = 0, color = "grey70") +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Three Common Activation Functions",
+    subtitle = "Sigmoid and tanh squash values; ReLU clips negatives to zero (sparsity + simpler gradients)",
+    x = "Input z (before activation)",
+    y = "Output f(z)",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+> **Reading the plot:** **Sigmoid** outputs probabilities in $(0,1)$—nice for single-output classification. **Tanh** centers outputs around zero. **ReLU** ($\max(0,z)$) is piecewise linear; it trains efficiently and is the default in many deep frameworks [1].
+
+---
+
+# Part 3: Wiring neurons into a **feedforward** network
+
+Data moves one way: input → hidden(s) → output. Below is a schematic **2 → 2 → 1** network (two inputs, two hidden neurons, one output)—the same shape Victor Zhou uses to illustrate feedforward [2].
+
+```{r network-diagram, fig.height=4.8, fig.width = 9, echo=FALSE}
+layers <- list(
+  input = tibble(id = c("x1", "x2"), x = c(1, 1), y = c(3, 1)),
+  hidden = tibble(id = c("h1", "h2"), x = c(3, 3), y = c(3.4, 0.6)),
+  output = tibble(id = "y_hat", x = 5, y = 2)
+)
+
+edges <- bind_rows(
+  as_tibble(merge(data.frame(from = layers$input$id), data.frame(to = layers$hidden$id))) %>%
+    mutate(layer = "in_hidden"),
+  tibble(from = layers$hidden$id, to = "y_hat", layer = "hidden_out")
+)
+
+node_xy <- bind_rows(
+  layers$input %>% mutate(layer = "Input"),
+  layers$hidden %>% mutate(layer = "Hidden"),
+  layers$output %>% mutate(layer = "Output")
+)
+
+from_xy <- node_xy %>% rename(x0 = x, y0 = y, from = id)
+to_xy <- node_xy %>% rename(x1 = x, y1 = y, to = id)
+
+seg <- edges %>%
+  left_join(from_xy %>% select(from, x0, y0), by = "from") %>%
+  left_join(to_xy %>% select(to, x1, y1), by = "to")
+
+ggplot() +
+  geom_segment(
+    data = seg,
+    aes(x = x0, y = y0, xend = x1, yend = y1),
+    size = 0.9,
+    color = "grey55",
+    arrow = arrow(length = unit(0.14, "inches"))
+  ) +
+  geom_label(
+    data = node_xy,
+    aes(x = x, y = y, label = id),
+    size = 5,
+    fontface = "bold",
+    fill = "#1E88E5",
+    color = "white",
+    label.size = 0
+  ) +
+  annotate(
+    "label",
+    x = 2,
+    y = 4.25,
+    label = "Weights on every arrow\n(biases inside neurons)",
+    fill = "#FFF3E0",
+    size = 4
+  ) +
+  labs(
+    title = "Feedforward Network (conceptual)",
+    subtitle = "Hidden layer combines inputs; output neuron combines hidden activations"
+  ) +
+  theme_void(base_size = 13) +
+  coord_equal(xlim = c(0.5, 5.6), ylim = c(0.2, 4.6), expand = FALSE)
+```
+
+> **Hidden layers** are not mysterious—they are **feature factories**. Early layers might detect edges or keyword flags; deeper layers combine those pieces. For tabular data (rows and columns), each hidden neuron still plays the same mathematical role: weighted sum + activation.
+
+---
+
+# Part 4: Numeric forward pass (spam-keyword style)
+
+GeeksforGeeks walks through a tiny email-spam example [1]: binary keyword features → hidden ReLU → output sigmoid. Below is the same calculation in R so you can line up code with the article’s tables.
+
+```{r forward-pass-spam-example}
+x <- c(1, 0, 1) # presence of keywords: free, win, offer
+W_h <- rbind(c(0.5, -0.2, 0.3), c(0.4, 0.1, -0.5))
+b_h <- c(0, 0)
+z_h <- as.vector(W_h %*% x + b_h)
+h <- pmax(0, z_h)
+
+w_o <- c(0.7, 0.2)
+b_o <- 0
+z_o <- sum(w_o * h) + b_o
+y_hat <- sigmoid(z_o)
+
+cat("Hidden pre-activations z_h:", paste(round(z_h, 4), collapse = ", "), "\n")
+cat("Hidden activations ReLU(z_h):", paste(round(h, 4), collapse = ", "), "\n")
+cat(sprintf("Output logit z_o = %.4f; sigmoid(z_o) = %.4f\n", z_o, y_hat))
+cat(sprintf(
+  "Decision at 0.5 threshold: %s\n",
+  ifelse(y_hat >= 0.5, "Spam (1)", "Not spam (0)")
+))
+```
+
+This is **forward propagation**: multiply-add, activate, repeat layer by layer.
+
+---
+
+# Part 5: Why nonlinearity matters — the XOR puzzle
+
+With **only linear boundaries**, you cannot perfectly separate XOR: points $(0,0)$ and $(1,1)$ share a label, while $(0,1)$ and $(1,0)$ share the opposite label.
+
+```{r xor-setup}
+xor_df <- tibble(
+  x1 = c(0, 0, 1, 1),
+  x2 = c(0, 1, 0, 1),
+  class = factor(c("A", "B", "B", "A"))
+)
+```
+
+```{r xor-linear-vs-nnet, fig.height = 5.5, fig.width = 10}
+grid <- as_tibble(expand.grid(
+  x1 = seq(-0.2, 1.2, length.out = 120),
+  x2 = seq(-0.2, 1.2, length.out = 120)
+))
+
+# Linear logistic regression boundary
+glm_xor <- glm(as.numeric(class == "B") ~ x1 + x2, data = xor_df, family = binomial)
+p_lin <- predict(glm_xor, grid, type = "response")
+grid_lin <- grid %>% mutate(prob_B = p_lin)
+
+set.seed(MASTER_SEED)
+nn_xor <- nnet::nnet(class ~ x1 + x2, data = xor_df, size = 4, decay = 1e-4,
+                     trace = FALSE, maxit = 500, linout = FALSE)
+p_nn <- predict(nn_xor, grid, type = "raw")
+if (is.matrix(p_nn)) {
+  prob_B_nn <- p_nn[, "B"]
+} else {
+  prob_B_nn <- as.vector(p_nn)
+}
+grid_nn <- grid %>% mutate(prob_B = prob_B_nn)
+
+panels <- c(
+  "Logistic regression (no hidden layer)",
+  "Feedforward net (hidden units)"
+)
+combined <- bind_rows(
+  mutate(grid_lin, panel = panels[1]),
+  mutate(grid_nn, panel = panels[2])
+) %>%
+  mutate(panel = factor(panel, levels = panels))
+
+xor_pts <- bind_rows(
+  mutate(xor_df, panel = panels[1]),
+  mutate(xor_df, panel = panels[2])
+) %>%
+  mutate(panel = factor(panel, levels = panels))
+
+ggplot(combined, aes(x = x1, y = x2, fill = prob_B)) +
+  geom_raster(interpolate = TRUE) +
+  facet_wrap(~panel, nrow = 1) +
+  geom_point(
+    data = xor_pts,
+    aes(x = x1, y = x2, shape = class, color = class),
+    size = 5,
+    inherit.aes = FALSE,
+    stroke = 1.2
+  ) +
+  geom_contour(aes(z = prob_B), breaks = 0.5, color = "black", size = 0.8) +
+  scale_fill_viridis_c(option = "C", limits = c(0, 1), name = "P(class B)") +
+  scale_color_manual(values = c(A = "#E65100", B = "#0277BD")) +
+  scale_shape_manual(values = c(A = 16, B = 17)) +
+  coord_fixed() +
+  labs(
+    title = "Same four XOR points — different model flexibility",
+    subtitle = "Left: a single linear boundary; right: a bent boundary from hidden nonlinearities",
+    x = expression(x[1]),
+    y = expression(x[2])
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "right")
+```
+
+> **Takeaway:** Stack neurons + nonlinear activations and boundaries become **curved**. Depth isn’t magic—it’s structured flexibility you must regularise so it doesn’t memorise noise [1].
+
+---
+
+# Part 6: Loss, gradients, and gradient descent (picture intuition)
+
+Training minimizes a **loss** (mean squared error for regression; cross-entropy for classification). Think of loss as elevation on a hilly landscape where **weights are coordinates**. **Gradient descent** rolls downhill; **backpropagation** computes the downhill direction efficiently using calculus chain rules [1], [2].
+
+```{r loss-surface-demo, fig.height = 5.5, fig.width = 9}
+# Synthetic convex bowl L(w1,w2) — illustrative only
+wgrid <- as_tibble(expand.grid(
+  w1 = seq(-2.5, 2.5, length.out = 120),
+  w2 = seq(-2.5, 2.5, length.out = 120)
+)) %>%
+  mutate(loss = 0.6 * w1^2 + 1.2 * w2^2 + 0.15 * sin(3 * w1) * cos(2 * w2))
+
+# Gradient descent path from a random start
+start <- c(2.1, -1.8)
+eta <- 0.35
+path <- vector("list", 22)
+w <- start
+for (i in seq_along(path)) {
+  g1 <- 1.2 * w[1] + 0.45 * cos(3 * w[1]) * cos(2 * w[2])
+  g2 <- 2.4 * w[2] - 0.3 * sin(3 * w[1]) * sin(2 * w[2])
+  path[[i]] <- c(w1 = w[1], w2 = w[2])
+  w <- w - eta * c(g1, g2)
+}
+path_df <- as_tibble(do.call(rbind, path)) %>% mutate(step = row_number())
+
+ggplot(wgrid, aes(x = w1, y = w2, z = loss)) +
+  geom_contour_filled(bins = 14, alpha = 0.85) +
+  geom_path(data = path_df, aes(x = w1, y = w2, group = 1), inherit.aes = FALSE,
+            color = "white", size = 1.2, arrow = arrow(length = unit(0.12, "inches"))) +
+  geom_point(data = path_df, aes(x = w1, y = w2), inherit.aes = FALSE,
+             color = "black", size = 2) +
+  labs(
+    title = "Illustrative Loss Landscape + Gradient Descent Path",
+    subtitle = "White path: repeated small steps opposite to the gradient (learning rate η controls step size)",
+    x = expression(w[1]), y = expression(w[2]), fill = "Loss"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "right")
+```
+
+```{r learning-rate-compare, fig.height = 4.5, fig.width = 9}
+quad_loss <- function(w) 0.5 * (w - 1.2)^2
+quad_grad <- function(w) (w - 1.2)
+
+run_gd <- function(eta, steps = 25, w0 = 3) {
+  w <- w0
+  out <- numeric(steps)
+  for (i in seq_len(steps)) {
+    out[i] <- w
+    w <- w - eta * quad_grad(w)
+  }
+  tibble(step = seq_len(steps), w = out, loss = quad_loss(out), eta = factor(eta))
+}
+
+lr_curve <- bind_rows(
+  run_gd(0.05),
+  run_gd(0.55),
+  run_gd(1.05)
+)
+
+ggplot(lr_curve, aes(x = step, y = loss, color = eta)) +
+  geom_line(size = 1.1) +
+  scale_y_log10() +
+  labs(
+    title = "Effect of Learning Rate on a Simple Bowl",
+    subtitle = "Too small: slow; too large: overshoots and oscillates (loss spikes)",
+    x = "Iteration",
+    y = "Loss (log scale)",
+    color = expression(eta)
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Part 7: Train a feedforward network on Iris (beginner-friendly benchmark)
+
+We compare **multinomial logistic regression** (`nnet::multinom`) with a single-hidden-layer **feedforward network** (`nnet::nnet`). Iris is tiny—expect small gaps—but the pattern mirrors larger projects: hold out a test set, fit models, compare accuracy. Neural nets benefit from **scaled** numeric inputs, so we **center and scale** the four measurement columns using training-set means and SDs before fitting `nnet` (logistic regression is invariant to linear scaling of inputs, so we keep it on raw units for simplicity).
+
+```{r iris-split}
+data(iris)
+set.seed(MASTER_SEED)
+n_train <- floor(0.75 * nrow(iris))
+train_idx <- sample(seq_len(nrow(iris)), size = n_train)
+iris_train <- iris[train_idx, ]
+iris_test <- iris[-train_idx, ]
+
+scale_numeric_like_train <- function(train_df, test_df) {
+  nums <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+  train_s <- train_df
+  test_s <- test_df
+  for (v in nums) {
+    mu <- mean(train_df[[v]])
+    sdv <- stats::sd(train_df[[v]])
+    if (!is.finite(sdv) || sdv < 1e-8) sdv <- 1
+    train_s[[v]] <- (train_df[[v]] - mu) / sdv
+    test_s[[v]] <- (test_df[[v]] - mu) / sdv
+  }
+  list(train = train_s, test = test_s)
+}
+
+iris_scaled <- scale_numeric_like_train(iris_train, iris_test)
+iris_train_nn <- iris_scaled$train
+iris_test_nn <- iris_scaled$test
+```
+
+```{r iris-models, results='hide'}
+set.seed(MASTER_SEED)
+log_fit <- nnet::multinom(Species ~ ., data = iris_train, trace = FALSE)
+
+set.seed(MASTER_SEED)
+nnet_fit <- nnet::nnet(
+  Species ~ .,
+  data = iris_train_nn,
+  size = 10,
+  decay = 0.01,
+  maxit = 400,
+  trace = FALSE,
+  linout = FALSE,
+  MaxNWts = 8000
+)
+```
+
+```{r iris-results}
+pred_log <- predict(log_fit, iris_test, type = "class")
+pred_nn <- predict(nnet_fit, iris_test_nn, type = "class")
+
+acc_log <- mean(pred_log == iris_test$Species)
+acc_nn <- mean(pred_nn == iris_test$Species)
+
+cat(sprintf("Hold-out accuracy — multinomial logistic: %.3f\n", acc_log))
+cat(sprintf("Hold-out accuracy — nnet (10 hidden units, fixed decay): %.3f\n", acc_nn))
+```
+
+```{r iris-results-viz, fig.height = 4.5, fig.width = 7}
+compare_df <- tibble(
+  Model = c("Multinomial logistic", "Single-hidden-layer nnet"),
+  Accuracy = c(acc_log, acc_nn)
+)
+
+ggplot(compare_df, aes(x = reorder(Model, Accuracy), y = Accuracy, fill = Model)) +
+  geom_col(width = 0.55) +
+  geom_text(aes(label = sprintf("%.2f%%", Accuracy * 100)), hjust = -0.05, fontface = "bold") +
+  coord_flip() +
+  scale_y_continuous(labels = percent, limits = c(0, 1.05)) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(
+    title = "Iris Test Accuracy — Linear Softmax vs. One Hidden Layer",
+    subtitle = "On easy separable data both can excel; networks shine when boundaries bend",
+    x = NULL,
+    y = "Accuracy"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+```{r iris-confusion, fig.height = 4.2, fig.width = 9}
+cm_both <- bind_rows(
+  mutate(as_tibble(table(Predicted = pred_log, Actual = iris_test$Species)), model = "Logistic regression"),
+  mutate(as_tibble(table(Predicted = pred_nn, Actual = iris_test$Species)), model = "nnet")
+) %>%
+  mutate(model = factor(model, levels = c("Logistic regression", "nnet")))
+
+ggplot(cm_both, aes(x = Actual, y = Predicted, fill = n)) +
+  geom_tile(color = "white", size = 1) +
+  geom_text(aes(label = n), fontface = "bold", size = 6) +
+  scale_fill_gradient(low = "white", high = "#3949AB") +
+  facet_wrap(~model, nrow = 1) +
+  labs(title = "Confusion matrices — Iris test set", x = "Actual", y = "Predicted") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold"),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+```{r iris-hidden-size-curve, fig.height = 4.5, fig.width = 8}
+sizes_try <- c(2L, 4L, 8L, 12L, 16L)
+
+acc_by_size <- map_dbl(sizes_try, function(sz) {
+  set.seed(MASTER_SEED)
+  fit_sz <- nnet::nnet(
+    Species ~ .,
+    data = iris_train_nn,
+    size = sz,
+    decay = 0.02,
+    maxit = 350,
+    trace = FALSE,
+    linout = FALSE,
+    MaxNWts = 12000
+  )
+  mean(predict(fit_sz, iris_test_nn, type = "class") == iris_test$Species)
+})
+
+curve_sz <- tibble(hidden_units = sizes_try, test_accuracy = acc_by_size)
+
+ggplot(curve_sz, aes(x = hidden_units, y = test_accuracy)) +
+  geom_line(size = 1.1, color = "#3949AB") +
+  geom_point(size = 3, color = "#E65100") +
+  scale_y_continuous(labels = scales::percent, limits = c(NA, 1)) +
+  labs(
+    title = "Iris: Test Accuracy vs. Number of Hidden Units",
+    subtitle = "Quick sweep (same decay/maxit for each point)—caret would cross-validate this more rigorously",
+    x = "Hidden units (size)",
+    y = "Hold-out accuracy"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+---
+
+# Part 8: Capacity, data hunger, and interpretability
+
+```{r pros-cons-table, echo=FALSE}
+trade <- tibble(
+  Topic = c(
+    "Flexibility",
+    "Data needs",
+    "Training cost",
+    "Interpretability",
+    "Overfitting risk"
+  ),
+  Guidance = c(
+    "Hidden layers can bend boundaries; depth stacks bends.",
+    "Large nets crave large, representative labeled sets [1].",
+    "Many weights → longer training; GPUs help big models.",
+    "Weights are hard to narrate—treat as high-accuracy black boxes unless using diagnostics.",
+    "Match capacity to data; use validation curves, dropout (in deep libs), weight decay."
+  )
+)
+
+knitr::kable(trade, caption = "Practical reminders for beginners")
+```
+
+---
+
+# Knowledge check
+
+<details>
+<summary>**Question 1:** In one sentence, what does a hidden layer do?</summary>
+**Answer:** It transforms the original features through learned weighted sums and nonlinear activations so the output layer can separate patterns that were not linearly separable in raw space.
+</details>
+
+<br>
+
+<details>
+<summary>**Question 2:** Why must activations be nonlinear?</summary>
+**Answer:** Composing only linear layers stays linear overall—no new bending power. Nonlinear activations let stacked layers approximate curved boundaries (see XOR).
+</details>
+
+<br>
+
+<details>
+<summary>**Question 3:** Forward vs. backward pass?</summary>
+**Answer:** Forward computes predictions with current weights; backward propagates loss derivatives to adjust each weight efficiently [1], [2].
+</details>
+
+<br>
+
+<details>
+<summary>**Question 4:** What is the learning rate?</summary>
+**Answer:** It scales each gradient step; too large yields unstable training, too small wastes iterations (illustrated in Part 6).
+</details>
+
+<br>
+
+<details>
+<summary>**Question 5:** When might logistic regression be enough?</summary>
+**Answer:** When classes are roughly linearly separable and interpretability matters more than squeezing the last points of accuracy—simple baselines first.
+</details>
+
+---
+
+# Summary
+
+1. Neural networks chain **weighted sums + biases + activations**; depth adds representational flexibility.
+2. **Forward propagation** is multiply-add-activate layer by layer; **loss** scores mistakes.
+3. **Backpropagation + gradient descent** adjust weights to reduce loss; **learning rate** matters.
+4. Nonlinear activations unlock patterns like **XOR**; linear models cannot bend enough alone.
+5. In R, `nnet`/`caret` trains compact feedforward models; match **capacity** to data and watch **generalisation**.
+
+---
+
+# References
+
+[1] GeeksforGeeks, “Neural Networks — A beginner’s guide,” 2026. [Online]. Available: https://www.geeksforgeeks.org/deep-learning/neural-networks-a-beginners-guide/
+
+[2] V. Zhou, “Machine Learning for Beginners: An Introduction to Neural Networks,” victorzhou.com, updated Jan. 13, 2026. [Online]. Available: https://victorzhou.com/blog/intro-to-neural-networks/
+
+[3] Roozbeh Sadeghian, *ANLY530 Lecture 13 — Neural Networks* (PowerPoint slides), Week 12 course materials.
+
+[4] Z. Huang, “seedhash: Deterministic Seed Generation from String Inputs Using MD5 Hashing,” R package, 2026. [Online]. Available: https://github.com/roozbeh412/seedhash
