@@ -279,8 +279,20 @@ set.seed(MASTER_SEED)
 nn_xor <- nnet::nnet(class ~ x1 + x2, data = xor_df, size = 4, decay = 1e-4,
                      trace = FALSE, maxit = 500, linout = FALSE)
 p_nn <- predict(nn_xor, grid, type = "raw")
+# Column names from nnet vary by version (may be NULL or level labels); index by factor level order.
 if (is.matrix(p_nn)) {
-  prob_B_nn <- p_nn[, "B"]
+  lev <- levels(xor_df$class)
+  cn <- colnames(p_nn)
+  idx_B <- match("B", lev)
+  if (!is.null(cn) && "B" %in% cn) {
+    prob_B_nn <- p_nn[, "B", drop = TRUE]
+  } else if (!is.na(idx_B) && idx_B <= ncol(p_nn)) {
+    prob_B_nn <- p_nn[, idx_B, drop = TRUE]
+  } else if (ncol(p_nn) == 1L) {
+    prob_B_nn <- p_nn[, 1L, drop = TRUE]
+  } else {
+    prob_B_nn <- p_nn[, ncol(p_nn), drop = TRUE]
+  }
 } else {
   prob_B_nn <- as.vector(p_nn)
 }
